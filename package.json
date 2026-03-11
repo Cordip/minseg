@@ -1,0 +1,12 @@
+{
+  "name": "mineral-segmentation-app-root",
+  "version": "1.0.0",
+  "description": "Root package for Mineral Segmentation App",
+  "scripts": {
+    "setup": "npm run setup:python && npm run setup:node",
+    "setup:python": "cd backend && pip install -r requirements.txt",
+    "setup:node": "cd frontend && npm install",
+    "start": "cd frontend && npm start",
+    "build": "cd frontend && npm run build-win"
+  }
+}
