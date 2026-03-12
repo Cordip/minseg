@@ -1,0 +1,13 @@
+__pycache__*.jsc
+frontend/src/app-bundle.obf.js
+node_modules
+__pycache__
+build
+frontend/dist
+backend/dist
+.superpowers
+
+# Nuitka build artifacts
+*.build/
+*.onefile-build/
+*.dist/

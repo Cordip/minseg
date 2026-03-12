@@ -1,0 +1,94 @@
+{
+  "name": "mineral-segmentation-app",
+  "version": "1.0.0",
+  "description": "Desktop application for mineral grain segmentation and annotation",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:dir": "electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "author": "Mineral Segmentation Team",
+  "homepage": "https://github.com/mineral-segmentation",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "javascript-obfuscator": "^4.2.2"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "bytenode": "^1.5.7"
+  },
+  "build": {
+    "appId": "com.mineral.segmentation",
+    "productName": "Mineral Segmentation",
+    "copyright": "Copyright © 2024",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main-entry.js",
+      "preload.js",
+      "src/app-bundle.js",
+      "src/app-bundle.obf.js",
+      "src/styles/**/*",
+      "public/**/*",
+      "**/*.jsc"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist",
+        "to": "backend",
+        "filter": [
+          "backend.exe",
+          "backend"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Science",
+      "maintainer": "Mineral Segmentation Team",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mineral Segmentation"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    }
+  }
+}
