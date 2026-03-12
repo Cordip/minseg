@@ -12,7 +12,7 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -139,12 +139,6 @@ async def load_images(
 ):
     """Load and align images from uploaded files."""
     try:
-        # Read images
-        def read_upload(f):
-            contents = asyncio.run(f.read())
-            nparr = np.frombuffer(contents, np.uint8)
-            return cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
         # Read all images
         ppl45_bytes = await ppl45.read()
         ppl90_bytes = await ppl90.read()
@@ -167,6 +161,61 @@ async def load_images(
         return {"status": "success", "message": "Images loaded successfully"}
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/load-image")
+async def load_single_image(
+    file: UploadFile = File(...),
+    image_type: Optional[str] = Form(None)
+):
+    """Load a single image file. File field name should be ppl45, ppl90, xpl45, or xpl90."""
+    try:
+        # Determine image type from parameter, form field name, or filename
+        detected_type = image_type
+        
+        if not detected_type:
+            # Try to detect type from filename
+            filename_lower = file.filename.lower()
+            if 'ppl' in filename_lower and '45' in filename_lower:
+                detected_type = 'ppl45'
+            elif 'ppl' in filename_lower and '90' in filename_lower:
+                detected_type = 'ppl90'
+            elif 'xpl' in filename_lower and '45' in filename_lower:
+                detected_type = 'xpl45'
+            elif 'xpl' in filename_lower and '90' in filename_lower:
+                detected_type = 'xpl90'
+        
+        if not detected_type or detected_type not in ['ppl45', 'ppl90', 'xpl45', 'xpl90']:
+            raise HTTPException(status_code=400, detail=f"Invalid image type: {detected_type}. Must be one of: ppl45, ppl90, xpl45, xpl90")
+        
+        # Read image
+        contents = await file.read()
+        img = cv2.imdecode(np.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
+        
+        if img is None:
+            raise HTTPException(status_code=400, detail=f"Failed to decode image: {file.filename}")
+        
+        state.images[detected_type] = img
+        
+        # Generate session ID if this is the first image
+        if not state.session_id:
+            state.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        print(f"Loaded {detected_type}: {img.shape}")
+        
+        return {
+            "status": "success", 
+            "image_type": detected_type,
+            "filename": file.filename,
+            "size": list(img.shape)
+        }
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

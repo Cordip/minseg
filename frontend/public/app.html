@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' http://127.0.0.1:8001 http://127.0.0.1:8000; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;">
+    <title>Mineral Segmentation - Editor</title>
+    <link rel="stylesheet" href="../src/styles/main.css">
+    <style>
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #eaeaea;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            z-index: 9999;
+        }
+        #loading-screen h2 {
+            margin-bottom: 20px;
+            color: #e94560;
+        }
+        #loading-screen .status {
+            color: #a0a0a0;
+            margin-bottom: 10px;
+        }
+        #loading-screen .error {
+            color: #ef4444;
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 80%;
+            max-height: 200px;
+            overflow: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            border: 1px solid #ef4444;
+        }
+        #debug-log {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #0d0d1a;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 11px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            z-index: 10000;
+            display: none;
+        }
+        #debug-log.visible { display: block; }
+    </style>
+</head>
+<body>
+    <div id="loading-screen">
+        <h2>🔬 Mineral Segmentation</h2>
+        <div class="status" id="loading-status">Загрузка приложения...</div>
+    </div>
+    
+    <div id="debug-log"></div>
+    <div id="root"></div>
+    
+    <script>
+        // Global error handler
+        window.onerror = function(msg, url, line, col, error) {
+            showError('JS Error: ' + msg + ' at line ' + line);
+            console.error('JS Error:', msg, url, line, col, error);
+            return false;
+        };
+        
+        // Debug logger
+        function log(msg) {
+            console.log('[App] ' + msg);
+            var debugLog = document.getElementById('debug-log');
+            if (debugLog) {
+                debugLog.innerHTML += new Date().toLocaleTimeString() + ' ' + msg + '<br>';
+                debugLog.scrollTop = 9999;
+                debugLog.classList.add('visible');
+            }
+        }
+        
+        function setStatus(msg) {
+            var el = document.getElementById('loading-status');
+            if (el) el.textContent = msg;
+            log(msg);
+        }
+        
+        function showError(msg) {
+            var el = document.getElementById('loading-status');
+            if (el) {
+                el.innerHTML = '<div class="error">' + msg + '</div>';
+            }
+            log('ERROR: ' + msg);
+        }
+        
+        function hideLoading() {
+            var el = document.getElementById('loading-screen');
+            if (el) el.style.display = 'none';
+        }
+        
+        // Check electronAPI
+        log('Page loaded');
+        log('electronAPI: ' + (typeof window.electronAPI));
+        log('React: ' + (typeof React));
+        log('ReactDOM: ' + (typeof ReactDOM));
+        
+        setStatus('Проверка окружения...');
+        
+        if (!window.electronAPI) {
+            showError('electronAPI не найден!\nПриложение должно запускаться через Electron.');
+        } else {
+            log('electronAPI available: ' + window.electronAPI.isAvailable);
+            log('Methods: ' + Object.keys(window.electronAPI).join(', '));
+        }
+    </script>
+    
+    <!-- Load React from CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" 
+            onerror="showError('Не удалось загрузить React с CDN. Проверьте интернет-соединение.')"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+            onerror="showError('Не удалось загрузить ReactDOM с CDN. Проверьте интернет-соединение.')"></script>
+    
+    <script>
+        setStatus('Загрузка React...');
+        
+        // Wait for React to load
+        function waitForReact() {
+            return new Promise(function(resolve, reject) {
+                var attempts = 0;
+                var maxAttempts = 50;
+                
+                function check() {
+                    attempts++;
+                    if (typeof React !== 'undefined' && typeof ReactDOM !== 'undefined') {
+                        log('React loaded successfully');
+                        resolve();
+                    } else if (attempts >= maxAttempts) {
+                        reject(new Error('React не загрузился за ' + maxAttempts + ' попыток'));
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                }
+                check();
+            });
+        }
+        
+        waitForReact().then(function() {
+            setStatus('Инициализация приложения...');
+            initApp();
+        }).catch(function(err) {
+            showError(err.message);
+        });
+        
+        function initApp() {
+            try {
+                log('Initializing React app...');
+                
+                // API helper
+                var createApi = function(baseUrl) {
+                    return {
+                        get: function(endpoint) {
+                            return fetch(baseUrl + endpoint)
+                                .then(function(res) {
+                                    if (!res.ok) throw new Error('API Error: ' + res.status);
+                                    return res.json();
+                                });
+                        },
+                        post: function(endpoint, data) {
+                            return fetch(baseUrl + endpoint, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(data)
+                            }).then(function(res) {
+                                if (!res.ok) throw new Error('API Error: ' + res.status);
+                                return res.json();
+                            });
+                        }
+                    };
+                };
+                
+                // Generate color
+                function generateDistinctColor() {
+                    var hue = Math.random() * 360;
+                    var saturation = 60 + Math.random() * 30;
+                    var lightness = 50 + Math.random() * 20;
+                    return hslToHex(hue, saturation, lightness);
+                }
+
+                function hslToHex(h, s, l) {
+                    s /= 100;
+                    l /= 100;
+                    var a = s * Math.min(l, 1 - l);
+                    var f = function(n) {
+                        var k = (n + h / 30) % 12;
+                        var color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                        return Math.round(255 * color).toString(16).padStart(2, '0');
+                    };
+                    return '#' + f(0) + f(8) + f(4);
+                }
+                
+                // Main App
+                function App() {
+                    var _a = React.useState(null); var api = _a[0]; var setApi = _a[1];
+                    var _b = React.useState(false); var imagesLoaded = _b[0]; var setImagesLoaded = _b[1];
+                    var _c = React.useState(false); var imagesAligned = _c[0]; var setImagesAligned = _c[1];
+                    var _d = React.useState({rows: 0, cols: 0}); var gridSize = _d[0]; var setGridSize = _d[1];
+                    var _e = React.useState({y: 0, x: 0}); var currentPatch = _e[0]; var setCurrentPatch = _e[1];
+                    var _f = React.useState('xpl45'); var currentView = _f[0]; var setCurrentView = _f[1];
+                    var _g = React.useState(true); var isXpl = _g[0]; var setIsXpl = _g[1];
+                    var _h = React.useState(false); var isXpl90 = _h[0]; var setIsXpl90 = _h[1];
+                    var _i = React.useState(true); var showSegments = _i[0]; var setShowSegments = _i[1];
+                    var _j = React.useState(false); var showBounds = _j[0]; var setShowBounds = _j[1];
+                    var _k = React.useState(1); var zoom = _k[0]; var setZoom = _k[1];
+                    var _l = React.useState({x: 0, y: 0}); var offset = _l[0]; var setOffset = _l[1];
+                    var _m = React.useState(null); var currentImage = _m[0]; var setCurrentImage = _m[1];
+                    var _n = React.useState(null); var segmentsImage = _n[0]; var setSegmentsImage = _n[1];
+                    var _o = React.useState(null); var boundsImage = _o[0]; var setBoundsImage = _o[1];
+                    var _p = React.useState({total: 0, completed: 0}); var segmentationProgress = _p[0]; var setSegmentationProgress = _p[1];
+                    var _q = React.useState(false); var isSegmenting = _q[0]; var setIsSegmenting = _q[1];
+                    var _r = React.useState({}); var tags = _r[0]; var setTags = _r[1];
+                    var _s = React.useState([]); var toasts = _s[0]; var setToasts = _s[1];
+                    var _t = React.useState(false); var showAnnotationModal = _t[0]; var setShowAnnotationModal = _t[1];
+                    var _u = React.useState(null); var selectedSegment = _u[0]; var setSelectedSegment = _u[1];
+                    var _v = React.useState(null); var minimapData = _v[0]; var setMinimapData = _v[1];
+                    var _w = React.useState(false); var patchReady = _w[0]; var setPatchReady = _w[1];
+                    
+                    // Init API
+                    React.useEffect(function() {
+                        log('useEffect: initApi');
+                        var apiUrl = 'http://127.0.0.1:8001';
+                        if (window.electronAPI && window.electronAPI.getApiUrl) {
+                            window.electronAPI.getApiUrl().then(function(url) {
+                                apiUrl = url;
+                                log('API URL from electronAPI: ' + apiUrl);
+                                setApi(createApi(apiUrl));
+                            });
+                        } else {
+                            log('Using default API URL: ' + apiUrl);
+                            setApi(createApi(apiUrl));
+                        }
+                    }, []);
+                    
+                    // Check status
+                    React.useEffect(function() {
+                        if (!api) return;
+                        log('useEffect: checking status');
+                        
+                        api.get('/api/status').then(function(status) {
+                            log('Status received: ' + JSON.stringify(status));
+                            if (status.images_loaded) {
+                                setImagesLoaded(true);
+                                setGridSize({rows: status.grid_size.rows, cols: status.grid_size.cols});
+                                setImagesAligned(true);
+                                setSegmentationProgress({
+                                    total: status.total_patches,
+                                    completed: status.segmented_patches
+                                });
+                                setIsSegmenting(status.is_segmenting);
+                                log('Images already loaded, grid: ' + status.grid_size.rows + 'x' + status.grid_size.cols);
+                            }
+                        }).catch(function(e) {
+                            log('Status check failed: ' + e.message);
+                        });
+                    }, [api]);
+                    
+                    // Load patch
+                    React.useEffect(function() {
+                        if (!api || !imagesAligned) return;
+                        log('useEffect: loading patch ' + currentPatch.y + ',' + currentPatch.x);
+                        setPatchReady(false);
+                        
+                        api.get('/api/patch/' + currentPatch.y + '/' + currentPatch.x + '?image_type=' + currentView)
+                            .then(function(data) {
+                                setCurrentImage(data.image);
+                                log('Patch image loaded');
+                            })
+                            .catch(function(e) { log('Patch load error: ' + e.message); });
+                        
+                        api.get('/api/segmentation/' + currentPatch.y + '/' + currentPatch.x)
+                            .then(function(data) {
+                                if (data.status === 'ready') {
+                                    setSegmentsImage(data.colored_segments);
+                                    setBoundsImage(data.bounds);
+                                    setPatchReady(true);
+                                    log('Segmentation loaded, ready');
+                                } else {
+                                    log('Segmentation status: ' + data.status);
+                                }
+                            })
+                            .catch(function(e) { log('Segmentation load error: ' + e.message); });
+                        
+                        api.get('/api/tags')
+                            .then(function(data) {
+                                setTags(data.tag_colors || {});
+                                log('Tags loaded: ' + Object.keys(data.tag_colors || {}).length);
+                            })
+                            .catch(function(e) { log('Tags load error: ' + e.message); });
+                    }, [api, currentPatch, currentView, imagesAligned]);
+                    
+                    // Load minimap
+                    React.useEffect(function() {
+                        if (!api || !imagesAligned) return;
+                        log('useEffect: loading minimap');
+                        
+                        api.get('/api/minimap?image_type=' + currentView)
+                            .then(function(data) {
+                                setMinimapData(data);
+                                log('Minimap loaded');
+                            })
+                            .catch(function(e) { log('Minimap load error: ' + e.message); });
+                    }, [api, imagesAligned, currentView]);
+                    
+                    // Poll segmentation progress
+                    React.useEffect(function() {
+                        if (!api || !imagesAligned) return;
+                        
+                        var interval = setInterval(function() {
+                            api.get('/api/segmentation-progress')
+                                .then(function(progress) {
+                                    setSegmentationProgress(progress);
+                                    setIsSegmenting(progress.is_running);
+                                })
+                                .catch(function() {});
+                        }, 500);
+                        
+                        return function() { clearInterval(interval); };
+                    }, [api, imagesAligned]);
+                    
+                    // Keyboard shortcuts
+                    React.useEffect(function() {
+                        var handleKeyDown = function(e) {
+                            if (showAnnotationModal) return;
+                            
+                            var key = e.key.toLowerCase();
+                            if (key === 'x') {
+                                setIsXpl90(function(prev) {
+                                    var newVal = !prev;
+                                    setCurrentView(isXpl ? (newVal ? 'xpl90' : 'xpl45') : (newVal ? 'ppl90' : 'ppl45'));
+                                    return newVal;
+                                });
+                            } else if (key === 'p') {
+                                setIsXpl(function(prev) {
+                                    var newVal = !prev;
+                                    setCurrentView(newVal ? (isXpl90 ? 'xpl90' : 'xpl45') : (isXpl90 ? 'ppl90' : 'ppl45'));
+                                    return newVal;
+                                });
+                            } else if (key === 's') {
+                                setShowSegments(function(prev) { return !prev; });
+                            } else if (key === 'b') {
+                                setShowBounds(function(prev) { return !prev; });
+                            } else if (key === 'arrowright') {
+                                setCurrentPatch(function(prev) { return {y: prev.y, x: Math.min(gridSize.cols - 1, prev.x + 1)}; });
+                                setZoom(1); setOffset({x: 0, y: 0});
+                            } else if (key === 'arrowleft') {
+                                setCurrentPatch(function(prev) { return {y: prev.y, x: Math.max(0, prev.x - 1)}; });
+                                setZoom(1); setOffset({x: 0, y: 0});
+                            } else if (key === 'arrowdown') {
+                                setCurrentPatch(function(prev) { return {y: Math.min(gridSize.rows - 1, prev.y + 1), x: prev.x}; });
+                                setZoom(1); setOffset({x: 0, y: 0});
+                            } else if (key === 'arrowup') {
+                                setCurrentPatch(function(prev) { return {y: Math.max(0, prev.y - 1), x: prev.x}; });
+                                setZoom(1); setOffset({x: 0, y: 0});
+                            }
+                        };
+                        
+                        window.addEventListener('keydown', handleKeyDown);
+                        return function() { window.removeEventListener('keydown', handleKeyDown); };
+                    }, [showAnnotationModal, gridSize, isXpl, isXpl90]);
+                    
+                    var addToast = function(message, type) {
+                        var id = Date.now();
+                        setToasts(function(prev) { return prev.concat({id: id, message: message, type: type || 'info'}); });
+                    };
+                    
+                    var removeToast = function(id) {
+                        setToasts(function(prev) { return prev.filter(function(t) { return t.id !== id; }); });
+                    };
+                    
+                    var handleImageClick = function(x, y) {
+                        if (!api || !patchReady) return;
+                        
+                        api.get('/api/patch-segment-at-point/' + currentPatch.y + '/' + currentPatch.x + '?x=' + x + '&y=' + y)
+                            .then(function(result) {
+                                if (result.status === 'success' && result.segment_id > 1) {
+                                    setSelectedSegment({id: result.segment_id, tag: result.tag, color: result.color});
+                                    setShowAnnotationModal(true);
+                                }
+                            })
+                            .catch(function(e) { log('Segment click error: ' + e.message); });
+                    };
+                    
+                    var handleCreateTag = function(tagName) {
+                        if (!api || !selectedSegment || !tagName.trim()) return;
+                        
+                        var color = tags[tagName] || generateDistinctColor();
+                        
+                        api.post('/api/label-segment', {
+                            patch_y: currentPatch.y,
+                            patch_x: currentPatch.x,
+                            segment_id: selectedSegment.id,
+                            tag: tagName,
+                            color: color
+                        }).then(function() {
+                            setTags(function(prev) { var n = Object.assign({}, prev); n[tagName] = color; return n; });
+                            setShowAnnotationModal(false);
+                            addToast('Сегмент помечен как "' + tagName + '"', 'success');
+                        }).catch(function(e) { addToast('Ошибка сохранения тега', 'error'); });
+                    };
+                    
+                    var handleSelectTag = function(tagName, color) {
+                        if (!api || !selectedSegment) return;
+                        
+                        api.post('/api/label-segment', {
+                            patch_y: currentPatch.y,
+                            patch_x: currentPatch.x,
+                            segment_id: selectedSegment.id,
+                            tag: tagName,
+                            color: color
+                        }).then(function() {
+                            setShowAnnotationModal(false);
+                            addToast('Сегмент помечен как "' + tagName + '"', 'success');
+                        }).catch(function(e) { addToast('Ошибка сохранения тега', 'error'); });
+                    };
+                    
+                    var handleSaveProject = function() {
+                        if (!window.electronAPI) {
+                            addToast('Файловый диалог доступен только в Electron', 'error');
+                            return;
+                        }
+                        
+                        window.electronAPI.selectOutputFolder().then(function(result) {
+                            if (result.canceled) return;
+                            
+                            api.post('/api/save-project', {output_path: result.path})
+                                .then(function() { addToast('Проект сохранен', 'success'); })
+                                .catch(function() { addToast('Ошибка сохранения проекта', 'error'); });
+                        });
+                    };
+                    
+                    var handleLoadImages = function() {
+                        if (!window.electronAPI) {
+                            addToast('Файловый диалог доступен только в Electron', 'error');
+                            return;
+                        }
+                        addToast('Используйте главное меню для загрузки изображений', 'info');
+                    };
+                    
+                    var handlePatchClick = function(y, x) {
+                        if (y >= 0 && y < gridSize.rows && x >= 0 && x < gridSize.cols) {
+                            setCurrentPatch({y: y, x: x});
+                            setZoom(1);
+                            setOffset({x: 0, y: 0});
+                        }
+                    };
+                    
+                    var handleWheel = function(delta, mouseX, mouseY) {
+                        var zoomFactor = delta > 0 ? 0.9 : 1.1;
+                        var newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
+                        var zoomPoint = {x: (mouseX - offset.x) / zoom, y: (mouseY - offset.y) / zoom};
+                        setZoom(newZoom);
+                        setOffset({x: mouseX - zoomPoint.x * newZoom, y: mouseY - zoomPoint.y * newZoom});
+                    };
+                    
+                    // Hide loading when ready
+                    React.useEffect(function() {
+                        if (api) {
+                            setTimeout(hideLoading, 100);
+                        }
+                    }, [api]);
+                    
+                    // Render loading state
+                    if (!api) {
+                        return React.createElement('div', {className: 'app-container'},
+                            React.createElement('div', {className: 'welcome-screen'},
+                                React.createElement('h1', {className: 'welcome-title'}, 'Загрузка...')
+                            )
+                        );
+                    }
+                    
+                    // Render welcome if no images
+                    if (!imagesLoaded) {
+                        return React.createElement('div', {className: 'app-container'},
+                            React.createElement('div', {className: 'welcome-screen'},
+                                React.createElement('h1', {className: 'welcome-title'}, 'Mineral Segmentation'),
+                                React.createElement('p', {className: 'welcome-subtitle'}, 
+                                    'Изображения не загружены. Перезапустите приложение и загрузите изображения через главное меню.'
+                                ),
+                                React.createElement('button', {
+                                    className: 'btn btn-primary',
+                                    style: {marginTop: '30px', padding: '12px 32px', fontSize: '16px'},
+                                    onClick: function() { 
+                                        if (window.electronAPI && window.electronAPI.selectImages) {
+                                            window.electronAPI.selectImages().then(function(result) {
+                                                log('Select images result: ' + JSON.stringify(result));
+                                            });
+                                        }
+                                    }
+                                }, 'Загрузить изображения')
+                            )
+                        );
+                    }
+                    
+                    // Main viewer render
+                    var displayImage = currentImage;
+                    if (showSegments && segmentsImage && currentImage) displayImage = segmentsImage;
+                    if (showBounds && boundsImage && currentImage) displayImage = boundsImage;
+                    
+                    var progress = segmentationProgress.total > 0 
+                        ? (segmentationProgress.completed / segmentationProgress.total) * 100 
+                        : 0;
+                    
+                    return React.createElement('div', {className: 'app-container'},
+                        // Toolbar
+                        React.createElement('div', {className: 'toolbar'},
+                            React.createElement('div', {className: 'toolbar-group'},
+                                React.createElement('button', {className: 'btn btn-secondary', onClick: handleLoadImages}, '📂 Загрузить'),
+                                React.createElement('button', {className: 'btn btn-secondary', onClick: handleSaveProject}, '💾 Сохранить')
+                            ),
+                            React.createElement('div', {className: 'toolbar-divider'}),
+                            React.createElement('div', {className: 'toolbar-group'},
+                                React.createElement('button', {
+                                    className: 'btn btn-secondary' + (isXpl ? '' : ' active'),
+                                    onClick: function() { setIsXpl(function(p) { setCurrentView(!p ? (isXpl90 ? 'xpl90' : 'xpl45') : (isXpl90 ? 'ppl90' : 'ppl45')); return !p; }); }
+                                }, isXpl ? 'XPL' : 'PPL'),
+                                React.createElement('button', {
+                                    className: 'btn btn-secondary' + (isXpl90 ? ' active' : ''),
+                                    onClick: function() { setIsXpl90(function(p) { setCurrentView(isXpl ? (p ? 'xpl45' : 'xpl90') : (p ? 'ppl45' : 'ppl90')); return !p; }); }
+                                }, isXpl90 ? '90°' : '45°')
+                            ),
+                            React.createElement('div', {className: 'toolbar-divider'}),
+                            React.createElement('div', {className: 'toolbar-group'},
+                                React.createElement('button', {
+                                    className: 'btn btn-secondary' + (showSegments ? ' active' : ''),
+                                    onClick: function() { setShowSegments(function(p) { return !p; }); }
+                                }, '🎨 Сегменты'),
+                                React.createElement('button', {
+                                    className: 'btn btn-secondary' + (showBounds ? ' active' : ''),
+                                    onClick: function() { setShowBounds(function(p) { return !p; }); }
+                                }, '📐 Границы')
+                            ),
+                            React.createElement('div', {className: 'toolbar-divider'}),
+                            React.createElement('div', {className: 'toolbar-group'},
+                                React.createElement('button', {className: 'btn btn-secondary', onClick: function() { setCurrentPatch(function(p) { return {y: p.y, x: Math.max(0, p.x - 1)}; }); }, disabled: currentPatch.x === 0}, '◀'),
+                                React.createElement('span', {style: {color: '#a0a0a0'}}, (currentPatch.x + 1) + '/' + (gridSize.cols || 1)),
+                                React.createElement('button', {className: 'btn btn-secondary', onClick: function() { setCurrentPatch(function(p) { return {y: p.y, x: Math.min(gridSize.cols - 1, p.x + 1)}; }); }, disabled: currentPatch.x >= gridSize.cols - 1}, '▶'),
+                                React.createElement('span', {style: {margin: '0 10px', color: '#a0a0a0'}}, '/'),
+                                React.createElement('button', {className: 'btn btn-secondary', onClick: function() { setCurrentPatch(function(p) { return {y: Math.max(0, p.y - 1), x: p.x}; }); }, disabled: currentPatch.y === 0}, '▲'),
+                                React.createElement('span', {style: {color: '#a0a0a0'}}, (currentPatch.y + 1) + '/' + (gridSize.rows || 1)),
+                                React.createElement('button', {className: 'btn btn-secondary', onClick: function() { setCurrentPatch(function(p) { return {y: Math.min(gridSize.rows - 1, p.y + 1), x: p.x}; }); }, disabled: currentPatch.y >= gridSize.rows - 1}, '▼')
+                            )
+                        ),
+                        
+                        // Main content
+                        React.createElement('div', {className: 'main-content'},
+                            // Minimap
+                            React.createElement('div', {className: 'minimap-panel'},
+                                React.createElement('div', {className: 'minimap-header'}, 'Карта патчей'),
+                                React.createElement('div', {className: 'minimap-container'},
+                                    minimapData ? React.createElement('div', {className: 'minimap-wrapper'},
+                                        React.createElement('img', {
+                                            src: 'data:image/png;base64,' + minimapData.image,
+                                            style: {width: '100%', height: 'auto', borderRadius: '4px'},
+                                            onClick: function(e) {
+                                                var rect = e.target.getBoundingClientRect();
+                                                var x = Math.floor((e.clientX - rect.left) / rect.width * gridSize.cols);
+                                                var y = Math.floor((e.clientY - rect.top) / rect.height * gridSize.rows);
+                                                handlePatchClick(Math.max(0, Math.min(gridSize.rows - 1, y)), Math.max(0, Math.min(gridSize.cols - 1, x)));
+                                            }
+                                        })
+                                    ) : React.createElement('div', {style: {color: '#666', textAlign: 'center', paddingTop: '40px'}}, 'Нет данных')
+                                ),
+                                React.createElement('div', {className: 'minimap-progress-section'},
+                                    React.createElement('div', {className: 'minimap-progress-header'},
+                                        React.createElement('span', {className: 'minimap-progress-title'}, 'Сегментация'),
+                                        React.createElement('span', {className: 'minimap-progress-count'}, segmentationProgress.completed + ' / ' + segmentationProgress.total)
+                                    ),
+                                    React.createElement('div', {className: 'minimap-progress-bar'},
+                                        React.createElement('div', {className: 'minimap-progress-fill', style: {width: progress + '%'}})
+                                    ),
+                                    isSegmenting && React.createElement('div', {className: 'minimap-progress-status'},
+                                        React.createElement('span', {className: 'status-dot warning'}),
+                                        'Обработка...'
+                                    )
+                                )
+                            ),
+                            
+                            // Viewer
+                            React.createElement('div', {className: 'viewer-panel'},
+                                patchReady && currentImage ? React.createElement('div', {
+                                    className: 'viewer-canvas',
+                                    style: {transform: 'translate(' + offset.x + 'px, ' + offset.y + 'px) scale(' + zoom + ')', transformOrigin: '0 0'},
+                                    onClick: function(e) {
+                                        var rect = e.currentTarget.getBoundingClientRect();
+                                        var x = Math.floor((e.clientX - rect.left - offset.x) / zoom);
+                                        var y = Math.floor((e.clientY - rect.top - offset.y) / zoom);
+                                        if (x >= 0 && y >= 0 && x < 1024 && y < 1024) handleImageClick(x, y);
+                                    },
+                                    onWheel: function(e) {
+                                        e.preventDefault();
+                                        var rect = e.currentTarget.getBoundingClientRect();
+                                        handleWheel(e.deltaY, e.clientX - rect.left, e.clientY - rect.top);
+                                    }
+                                },
+                                    React.createElement('img', {
+                                        className: 'viewer-image',
+                                        src: 'data:image/png;base64,' + displayImage,
+                                        alt: 'Patch',
+                                        draggable: false
+                                    })
+                                ) : React.createElement('div', {style: {display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666'}}, 
+                                    patchReady ? 'Загрузка...' : 'Сегментация не завершена'
+                                ),
+                                React.createElement('div', {className: 'info-overlay'},
+                                    React.createElement('div', {className: 'info-row'},
+                                        React.createElement('span', null, React.createElement('span', {className: 'label'}, 'Патч:'), ' ' + (currentPatch.y + 1) + ', ' + (currentPatch.x + 1)),
+                                        React.createElement('span', null, React.createElement('span', {className: 'label'}, 'Масштаб:'), ' ' + Math.round(zoom * 100) + '%'),
+                                        React.createElement('span', null, React.createElement('span', {className: 'label'}, 'Вид:'), ' ' + currentView.toUpperCase())
+                                    )
+                                )
+                            ),
+                            
+                            // Tags panel
+                            React.createElement('div', {className: 'tags-panel'},
+                                React.createElement('div', {className: 'tags-header'},
+                                    'Теги минералов',
+                                    React.createElement('span', {style: {fontSize: '12px', color: '#a0a0a0'}}, Object.keys(tags).length + ' определено')
+                                ),
+                                React.createElement('div', {className: 'tags-list'},
+                                    Object.keys(tags).length === 0 
+                                        ? React.createElement('div', {style: {color: '#666', textAlign: 'center', padding: '20px'}}, 'Нет определенных тегов')
+                                        : Object.entries(tags).map(function(entry) {
+                                            var name = entry[0];
+                                            var color = entry[1];
+                                            return React.createElement('div', {key: name, className: 'tag-item'},
+                                                React.createElement('span', {className: 'tag-color', style: {backgroundColor: color}}),
+                                                React.createElement('span', {className: 'tag-name'}, name)
+                                            );
+                                        })
+                                )
+                            )
+                        ),
+                        
+                        // Status bar
+                        React.createElement('div', {className: 'status-bar'},
+                            React.createElement('div', {className: 'status-item'},
+                                React.createElement('span', {className: 'status-dot ' + (isSegmenting ? 'warning' : 'success')}),
+                                isSegmenting ? 'Сегментация...' : 'Готово'
+                            ),
+                            React.createElement('div', {className: 'status-item'}, 'Сетка: ' + gridSize.rows + '×' + gridSize.cols + ' патчей'),
+                            React.createElement('div', {className: 'status-item'}, 'Навигация: X - угол | P - PPL/XPL | S - сегменты | B - границы')
+                        ),
+                        
+                        // Annotation modal
+                        showAnnotationModal && React.createElement('div', {className: 'modal-overlay', onClick: function() { setShowAnnotationModal(false); }},
+                            React.createElement('div', {className: 'modal', onClick: function(e) { e.stopPropagation(); }},
+                                React.createElement('h3', {className: 'modal-header'}, 'Разметка сегмента #' + (selectedSegment ? selectedSegment.id : '')),
+                                React.createElement('input', {
+                                    type: 'text',
+                                    className: 'modal-input',
+                                    placeholder: 'Введите название минерала...',
+                                    id: 'tag-input',
+                                    autoFocus: true
+                                }),
+                                Object.keys(tags).length > 0 && React.createElement('div', {className: 'modal-suggestions'},
+                                    React.createElement('p', {style: {fontSize: '12px', color: '#a0a0a0', marginBottom: '8px'}}, 'Или выберите существующий:'),
+                                    Object.entries(tags).map(function(entry) {
+                                        var name = entry[0];
+                                        var color = entry[1];
+                                        return React.createElement('div', {key: name, className: 'suggestion-item', onClick: function() { handleSelectTag(name, color); }},
+                                            React.createElement('span', {className: 'suggestion-color', style: {backgroundColor: color}}),
+                                            React.createElement('span', null, name)
+                                        );
+                                    })
+                                ),
+                                React.createElement('div', {className: 'modal-buttons'},
+                                    React.createElement('button', {className: 'btn btn-secondary', onClick: function() { setShowAnnotationModal(false); }}, 'Отмена'),
+                                    React.createElement('button', {className: 'btn btn-primary', onClick: function() {
+                                        var input = document.getElementById('tag-input');
+                                        if (input && input.value.trim()) handleCreateTag(input.value.trim());
+                                    }}, 'Создать')
+                                )
+                            )
+                        )
+                    );
+                }
+                
+                // Mount app
+                log('Mounting React app...');
+                var rootElement = document.getElementById('root');
+                if (!rootElement) {
+                    showError('Root element not found!');
+                    return;
+                }
+                
+                var root = ReactDOM.createRoot(rootElement);
+                root.render(React.createElement(App));
+                log('React app mounted successfully');
+                
+            } catch (error) {
+                showError('Ошибка инициализации: ' + error.message + '\n' + error.stack);
+            }
+        }
+    </script>
+</body>
+</html>

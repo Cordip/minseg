@@ -6,11 +6,9 @@ const fs = require('fs');
 let mainWindow;
 let pythonProcess;
 const API_URL = 'http://127.0.0.1:8001';
-const VENV_PYTHON = 'I:\\NSU\\technohack\\ovenv\\Scripts\\python.exe';
 
-function findPython() {
-    if (fs.existsSync(VENV_PYTHON)) return VENV_PYTHON;
-    return process.platform === 'win32' ? 'py' : 'python3';
+function getPythonCommand() {
+    return process.platform === 'win32' ? 'python' : 'python3';
 }
 
 async function killPort(port) {
@@ -20,7 +18,9 @@ async function killPort(port) {
                 setTimeout(resolve, 1000);
             });
         } else {
-            resolve();
+            exec(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, () => {
+                setTimeout(resolve, 500);
+            });
         }
     });
 }
@@ -28,12 +28,18 @@ async function killPort(port) {
 async function startBackend() {
     await killPort(8001);
     
-    const backendDir = path.join(__dirname, '..', 'backend');
-    const python = findPython();
+    const backendDir = path.resolve(__dirname, '..', 'backend');
+    const python = getPythonCommand();
     
     console.log('=== Starting Backend ===');
-    console.log('Python:', python);
-    console.log('Dir:', backendDir);
+    console.log('Python command:', python);
+    console.log('Backend Dir:', backendDir);
+    console.log('VIRTUAL_ENV:', process.env.VIRTUAL_ENV || 'not set');
+    
+    if (!fs.existsSync(backendDir)) {
+        console.error('Backend directory not found!');
+        return false;
+    }
     
     pythonProcess = spawn(python, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8001'], {
         cwd: backendDir,
@@ -46,7 +52,6 @@ async function startBackend() {
     pythonProcess.on('error', e => console.error('Process error:', e));
     pythonProcess.on('close', c => console.log('Process closed:', c));
     
-    // Wait for backend
     const http = require('http');
     for (let i = 0; i < 30; i++) {
         try {
@@ -66,13 +71,22 @@ async function startBackend() {
 }
 
 function createWindow() {
+    const preloadPath = path.resolve(__dirname, 'preload.js');
+    const htmlPath = path.resolve(__dirname, 'public', 'index.html');
+    
+    console.log('=== Creating Window ===');
+    console.log('Preload path:', preloadPath);
+    console.log('HTML path:', htmlPath);
+    
     mainWindow = new BrowserWindow({
-        width: 1000,
-        height: 750,
+        width: 1200,
+        height: 800,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
+            preload: preloadPath,
+            sandbox: false,
+            webSecurity: true
         },
         backgroundColor: '#1a1a2e',
         show: false,
@@ -81,42 +95,64 @@ function createWindow() {
         maximizable: true
     });
     
-    const htmlPath = path.join(__dirname, 'public', 'index.html');
-    console.log('Loading HTML:', htmlPath);
+    // ALWAYS open DevTools for debugging
+    mainWindow.webContents.openDevTools();
+    
+    mainWindow.webContents.on('did-finish-load', () => {
+        console.log('Page finished loading');
+    });
+    
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('Failed to load page:', errorCode, errorDescription);
+    });
+    
+    // Log console messages from renderer
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        console.log('[Renderer]', message);
+    });
     
     mainWindow.loadFile(htmlPath)
-        .then(() => console.log('HTML loaded'))
+        .then(() => console.log('HTML loaded successfully'))
         .catch(e => console.error('Load error:', e));
     
     mainWindow.once('ready-to-show', () => mainWindow.show());
 }
 
+function loadEditorPage() {
+    const appHtmlPath = path.resolve(__dirname, 'public', 'app.html');
+    console.log('=== Loading Editor Page ===');
+    console.log('Path:', appHtmlPath);
+    console.log('Exists:', fs.existsSync(appHtmlPath));
+    
+    if (fs.existsSync(appHtmlPath)) {
+        mainWindow.loadFile(appHtmlPath)
+            .then(() => console.log('Editor page loaded'))
+            .catch(e => console.error('Failed to load editor:', e));
+    } else {
+        console.error('app.html not found at:', appHtmlPath);
+    }
+}
+
 // IPC Handlers
 
-// Select a single image file
 ipcMain.handle('select-single-image', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Выберите изображение',
         properties: ['openFile'],
-        filters: [{ 
-            name: 'Images', 
-            extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp'] 
-        }]
+        filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp'] }]
     });
     
     if (result.canceled || result.filePaths.length === 0) {
         return { canceled: true };
     }
     
-    const filePath = result.filePaths[0];
     return {
         canceled: false,
-        filePath: filePath,
-        fileName: path.basename(filePath)
+        filePath: result.filePaths[0],
+        fileName: path.basename(result.filePaths[0])
     };
 });
 
-// Select multiple images (legacy)
 ipcMain.handle('select-images', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Select 4 Images',
@@ -155,14 +191,30 @@ ipcMain.handle('select-output-folder', async () => {
 
 ipcMain.handle('get-api-url', () => API_URL);
 
+ipcMain.handle('open-editor', () => {
+    console.log('=== IPC: open-editor called ===');
+    loadEditorPage();
+    return { success: true };
+});
+
 // App lifecycle
 app.whenReady().then(async () => {
+    console.log('App ready, starting backend...');
+    
     const ok = await startBackend();
     if (!ok) {
-        dialog.showErrorBox('Error', 'Backend failed to start');
-        app.quit();
-        return;
+        console.error('Backend failed to start');
+        dialog.showErrorBox(
+            'Backend Error', 
+            'Failed to start Python backend.\n\n' +
+            'Make sure you run start.bat after activating your venv:\n' +
+            '  ovenv\\Scripts\\activate\n' +
+            '  .\\start.bat\n\n' +
+            'And uvicorn is installed:\n' +
+            '  pip install uvicorn fastapi'
+        );
     }
+    
     createWindow();
 });
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:; connect-src 'self' http://127.0.0.1:8001; script-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' http://127.0.0.1:8001 http://127.0.0.1:8000; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
     <title>Mineral Segmentation</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -58,9 +58,7 @@
             transition: border-color 0.2s;
         }
         
-        .image-card.loaded {
-            border-color: #4ecca3;
-        }
+        .image-card.loaded { border-color: #4ecca3; }
         
         .image-card h3 {
             color: #fff;
@@ -99,22 +97,9 @@
             width: 100%;
         }
         
-        .image-card button:hover { 
-            background: #4ecca3; 
-            color: #16213e;
-        }
-        
-        .image-card button:disabled { 
-            background: #333; 
-            border-color: #555;
-            color: #666;
-            cursor: not-allowed; 
-        }
-        
-        .image-card.loaded button {
-            background: #4ecca3;
-            color: #16213e;
-        }
+        .image-card button:hover { background: #4ecca3; color: #16213e; }
+        .image-card button:disabled { background: #333; border-color: #555; color: #666; cursor: not-allowed; }
+        .image-card.loaded button { background: #4ecca3; color: #16213e; }
         
         .actions {
             display: flex;
@@ -145,13 +130,9 @@
             font-size: 14px;
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s;
         }
         
-        .btn-secondary:hover { 
-            border-color: #888;
-            color: #fff;
-        }
+        .btn-secondary:hover { border-color: #888; color: #fff; }
         
         #status {
             margin-top: 20px;
@@ -161,22 +142,15 @@
             min-height: 20px;
         }
         
-        #status.error {
-            color: #e94560;
-        }
-        
-        #status.success {
-            color: #4ecca3;
-        }
+        #status.error { color: #e94560; }
+        #status.success { color: #4ecca3; }
         
         .progress-container {
             margin-top: 20px;
             display: none;
         }
         
-        .progress-container.visible {
-            display: block;
-        }
+        .progress-container.visible { display: block; }
         
         .progress-bar {
             width: 100%;
@@ -211,14 +185,13 @@
             font-family: monospace;
             font-size: 11px;
             color: #0f0;
-            max-height: 120px;
+            max-height: 150px;
             overflow-y: auto;
             display: none;
+            z-index: 1000;
         }
         
-        #debug.visible {
-            display: block;
-        }
+        #debug.visible { display: block; }
         
         .legend {
             margin-top: 30px;
@@ -227,11 +200,7 @@
             border-radius: 8px;
         }
         
-        .legend h4 {
-            color: #888;
-            font-size: 12px;
-            margin-bottom: 10px;
-        }
+        .legend h4 { color: #888; font-size: 12px; margin-bottom: 10px; }
         
         .legend-items {
             display: flex;
@@ -319,72 +288,82 @@
     <div id="debug"></div>
 
     <script>
-        const API = 'http://127.0.0.1:8001';
-        const imageTypes = ['ppl45', 'ppl90', 'xpl45', 'xpl90'];
-        const selectedFiles = {
-            ppl45: null,
-            ppl90: null,
-            xpl45: null,
-            xpl90: null
+        var API = 'http://127.0.0.1:8001';
+        var imageTypes = ['ppl45', 'ppl90', 'xpl45', 'xpl90'];
+        var selectedFiles = { ppl45: null, ppl90: null, xpl45: null, xpl90: null };
+        
+        // Global error handler
+        window.onerror = function(msg, url, line, col, error) {
+            log('GLOBAL ERROR: ' + msg + ' at line ' + line);
+            console.error('Global error:', msg, url, line, col, error);
+            return false;
+        };
+        
+        window.onunhandledrejection = function(event) {
+            log('PROMISE ERROR: ' + event.reason);
+            console.error('Unhandled rejection:', event.reason);
         };
         
         function log(msg) {
-            console.log(msg);
-            const debug = document.getElementById('debug');
-            debug.innerHTML += new Date().toLocaleTimeString() + ' ' + msg + '<br>';
-            debug.scrollTop = 9999;
-            debug.classList.add('visible');
+            console.log('[App] ' + msg);
+            var debug = document.getElementById('debug');
+            if (debug) {
+                debug.innerHTML += new Date().toLocaleTimeString() + ' ' + msg + '<br>';
+                debug.scrollTop = 9999;
+                debug.classList.add('visible');
+            }
         }
         
-        function setStatus(msg, type = '') {
-            const status = document.getElementById('status');
-            status.textContent = msg;
-            status.className = type;
+        function setStatus(msg, type) {
+            var status = document.getElementById('status');
+            if (status) {
+                status.textContent = msg;
+                status.className = type || '';
+            }
+            log(msg);
         }
         
         function updateUI() {
-            let allSelected = true;
-            imageTypes.forEach(type => {
-                const card = document.getElementById('card-' + type);
-                const filename = document.getElementById('filename-' + type);
-                const btn = document.getElementById('btn-' + type);
+            var allSelected = true;
+            imageTypes.forEach(function(type) {
+                var card = document.getElementById('card-' + type);
+                var filename = document.getElementById('filename-' + type);
+                var btn = document.getElementById('btn-' + type);
                 
-                if (selectedFiles[type]) {
+                if (card && selectedFiles[type]) {
                     card.classList.add('loaded');
-                    filename.textContent = selectedFiles[type].name;
-                    btn.textContent = 'Изменить';
+                    if (filename) filename.textContent = selectedFiles[type].name;
+                    if (btn) btn.textContent = 'Изменить';
                 } else {
-                    card.classList.remove('loaded');
-                    filename.textContent = '';
-                    btn.textContent = 'Выбрать файл';
+                    if (card) card.classList.remove('loaded');
+                    if (filename) filename.textContent = '';
+                    if (btn) btn.textContent = 'Выбрать файл';
                     allSelected = false;
                 }
             });
             
-            document.getElementById('startBtn').disabled = !allSelected;
+            var startBtn = document.getElementById('startBtn');
+            if (startBtn) startBtn.disabled = !allSelected;
         }
         
         async function selectImage(type) {
             if (!window.electronAPI) {
                 setStatus('Ошибка: electronAPI не доступен', 'error');
-                log('ERROR: electronAPI не доступен');
                 return;
             }
             
             try {
                 log('Выбор файла для ' + type);
-                const result = await window.electronAPI.selectSingleImage();
-                log('Результат: ' + JSON.stringify(result));
+                var result = await window.electronAPI.selectSingleImage();
                 
-                if (result.canceled) {
-                    return;
-                }
+                if (result.canceled) return;
                 
                 selectedFiles[type] = {
                     path: result.filePath,
                     name: result.fileName
                 };
                 
+                log('Выбран файл: ' + result.fileName);
                 updateUI();
                 setStatus('');
                 
@@ -395,125 +374,162 @@
         }
         
         function clearAll() {
-            imageTypes.forEach(type => {
-                selectedFiles[type] = null;
-            });
+            imageTypes.forEach(function(type) { selectedFiles[type] = null; });
             updateUI();
             setStatus('');
         }
         
         function setProgress(percent, text) {
-            document.getElementById('progressFill').style.width = percent + '%';
-            document.getElementById('progressText').textContent = text;
+            var progressFill = document.getElementById('progressFill');
+            var progressText = document.getElementById('progressText');
+            if (progressFill) progressFill.style.width = percent + '%';
+            if (progressText) progressText.textContent = text;
         }
         
         async function startProcessing() {
-            const startBtn = document.getElementById('startBtn');
-            startBtn.disabled = true;
+            var startBtn = document.getElementById('startBtn');
+            if (startBtn) startBtn.disabled = true;
             
-            const progressContainer = document.getElementById('progressContainer');
-            progressContainer.classList.add('visible');
+            var progressContainer = document.getElementById('progressContainer');
+            if (progressContainer) progressContainer.classList.add('visible');
             
             try {
+                log('=== Начало обработки ===');
+                
                 // Test API
-                log('Проверка API...');
+                setStatus('Проверка сервера...');
                 setProgress(0, 'Проверка сервера...');
                 
-                const testRes = await fetch(API + '/');
-                const testData = await testRes.json();
-                log('API: ' + JSON.stringify(testData));
+                var testRes = await fetch(API + '/');
+                var testData = await testRes.json();
+                log('API ответ: ' + JSON.stringify(testData));
                 
-                // Upload images
+                // Upload images ONE BY ONE (more reliable for large files)
                 setProgress(5, 'Загрузка изображений...');
                 log('Загрузка изображений...');
                 
-                const formData = new FormData();
-                for (const type of imageTypes) {
-                    const file = selectedFiles[type];
-                    if (!file) continue;
+                for (var i = 0; i < imageTypes.length; i++) {
+                    var type = imageTypes[i];
+                    var file = selectedFiles[type];
                     
-                    log('Чтение: ' + file.path);
-                    const base64 = window.electronAPI.readFile(file.path);
-                    const byteChars = atob(base64);
-                    const byteNumbers = new Array(byteChars.length);
-                    for (let i = 0; i < byteChars.length; i++) {
-                        byteNumbers[i] = byteChars.charCodeAt(i);
+                    if (!file) {
+                        log('Пропуск ' + type + ' - файл не выбран');
+                        continue;
                     }
-                    const byteArray = new Uint8Array(byteNumbers);
-                    const blob = new Blob([byteArray]);
-                    formData.append(type, blob, file.name);
-                }
-                
-                setProgress(15, 'Отправка на сервер...');
-                log('Отправка на сервер...');
-                
-                const uploadRes = await fetch(API + '/api/load-images', {
-                    method: 'POST',
-                    body: formData
-                });
-                const uploadData = await uploadRes.json();
-                log('Upload: ' + JSON.stringify(uploadData));
-                
-                if (!uploadRes.ok) {
-                    throw new Error(uploadData.detail || 'Ошибка загрузки');
+                    
+                    log('Обработка ' + type + ': ' + file.name);
+                    setStatus('Загрузка ' + file.name + '...');
+                    
+                    // Read file as buffer array (more reliable than base64)
+                    log('Чтение файла: ' + file.path);
+                    var fileData = window.electronAPI.readFileBuffer(file.path);
+                    
+                    if (!fileData) {
+                        throw new Error('Не удалось прочитать файл: ' + file.name);
+                    }
+                    
+                    log('Файл прочитан, размер: ' + fileData.size + ' байт');
+                    
+                    // Convert array to Uint8Array then to Blob
+                    var uint8Array = new Uint8Array(fileData.data);
+                    var blob = new Blob([uint8Array]);
+                    log('Blob создан, размер: ' + blob.size);
+                    
+                    // Upload single file
+                    var formData = new FormData();
+                    formData.append("file", blob, file.name);
+                    formData.append("image_type", type);
+                    
+                    log('Отправка ' + type + ' на сервер...');
+                    var uploadRes = await fetch(API + '/api/load-image', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!uploadRes.ok) {
+                        var errText = await uploadRes.text();
+                        log('Ошибка загрузки: ' + errText);
+                        throw new Error('Ошибка загрузки ' + type + ': ' + errText);
+                    }
+                    
+                    var uploadResult = await uploadRes.json();
+                    log('Загружен ' + type + ': ' + JSON.stringify(uploadResult));
+                    
+                    setProgress(5 + (i + 1) * 5, 'Загружен ' + file.name);
                 }
                 
                 // Align images
                 setProgress(30, 'Выравнивание изображений...');
+                setStatus('Выравнивание изображений...');
                 log('Выравнивание...');
                 
-                const alignRes = await fetch(API + '/api/align-images', { method: 'POST' });
-                const alignData = await alignRes.json();
+                var alignRes = await fetch(API + '/api/align-images', { method: 'POST' });
+                var alignData = await alignRes.json();
                 log('Align: ' + JSON.stringify(alignData));
                 
                 if (!alignRes.ok) {
                     throw new Error(alignData.detail || 'Ошибка выравнивания');
                 }
                 
-                const totalPatches = alignData.grid_size.rows * alignData.grid_size.cols;
+                var totalPatches = alignData.grid_size.rows * alignData.grid_size.cols;
+                log('Всего патчей: ' + totalPatches);
                 
                 // Start segmentation
                 setProgress(40, 'Запуск сегментации...');
+                setStatus('Запуск сегментации...');
                 log('Запуск сегментации...');
                 
                 await fetch(API + '/api/start-segmentation', { method: 'POST' });
+                log('Сегментация запущена');
                 
                 // Poll progress
-                let completed = 0;
+                var completed = 0;
                 while (completed < totalPatches) {
-                    await new Promise(r => setTimeout(r, 500));
+                    await new Promise(function(r) { setTimeout(r, 500); });
                     
-                    const progressRes = await fetch(API + '/api/segmentation-progress');
-                    const progressData = await progressRes.json();
+                    var progressRes = await fetch(API + '/api/segmentation-progress');
+                    var progressData = await progressRes.json();
                     
                     completed = progressData.completed;
-                    const percent = 40 + (completed / totalPatches) * 55;
-                    setProgress(Math.round(percent), 
-                        `Сегментация: ${completed}/${totalPatches} патчей`);
+                    var percent = 40 + (completed / totalPatches) * 55;
+                    setProgress(Math.round(percent), 'Сегментация: ' + completed + '/' + totalPatches);
                 }
                 
                 setProgress(100, 'Готово!');
-                setStatus('Обработка завершена! Перезапустите приложение для просмотра результатов.', 'success');
-                log('Сегментация завершена');
+                setStatus('Обработка завершена!', 'success');
+                log('=== Обработка завершена ===');
+                
+                // Open editor
+                await new Promise(function(r) { setTimeout(r, 1000); });
+                
+                if (window.electronAPI && window.electronAPI.openEditor) {
+                    log('Открытие редактора...');
+                    await window.electronAPI.openEditor();
+                }
                 
             } catch (e) {
                 log('ERROR: ' + e.message);
+                if (e.stack) log('Stack: ' + e.stack);
                 setStatus('Ошибка: ' + e.message, 'error');
-                progressContainer.classList.remove('visible');
+                if (progressContainer) progressContainer.classList.remove('visible');
+                if (startBtn) startBtn.disabled = false;
             }
-            
-            startBtn.disabled = false;
         }
         
         // Initialize
-        log('Страница загружена');
-        log('electronAPI: ' + (typeof window.electronAPI));
-        
-        if (!window.electronAPI) {
-            setStatus('Внимание: electronAPI не обнаружен. Запустите через Electron.', 'error');
-        }
-        
-        updateUI();
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Страница загружена');
+            log('electronAPI: ' + (typeof window.electronAPI));
+            
+            if (window.electronAPI) {
+                log('electronAPI available: ' + window.electronAPI.isAvailable);
+                setStatus('Готов к работе', 'success');
+            } else {
+                setStatus('Ошибка: electronAPI не обнаружен', 'error');
+            }
+            
+            updateUI();
+        });
     </script>
 </body>
 </html>

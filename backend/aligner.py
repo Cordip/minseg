@@ -55,7 +55,7 @@ class Aligner:
             return target_img
         
         # Match features
-        matches = self.matcher.match(descriptors1, descriptors2, None)
+        matches = list(self.matcher.match(descriptors1, descriptors2, None))
         
         if len(matches) < 4:
             print("Warning: Not enough matches for homography, returning original")
@@ -122,7 +122,7 @@ class Aligner:
         if descriptors1 is None or descriptors2 is None or len(descriptors1) < 2 or len(descriptors2) < 2:
             return aligned_to_direct
         
-        matches = self.matcher.match(descriptors1, descriptors2, None)
+        matches = list(self.matcher.match(descriptors1, descriptors2, None))
         
         if len(matches) < 4:
             return aligned_to_direct

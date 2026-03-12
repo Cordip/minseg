@@ -4,8 +4,9 @@ echo   Mineral Segmentation App
 echo ================================================
 echo.
 
-:: Check Python
-where python >nul 2>&1
+:: Show current Python environment
+echo Current Python:
+python --version 2>nul
 if errorlevel 1 (
     echo ERROR: Python not found! Install Python 3.9+
     pause
@@ -20,19 +21,28 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Check for venv and activate
-if exist "venv\Scripts\activate.bat" (
-    echo Found venv, activating...
-    call venv\Scripts\activate.bat
+:: Check uvicorn
+python -c "import uvicorn" 2>nul
+if errorlevel 1 (
+    echo.
+    echo ERROR: uvicorn not found in current Python environment!
+    echo Please activate your venv and install uvicorn:
+    echo.
+    echo   ovenv\Scripts\activate
+    echo   pip install uvicorn fastapi
+    echo   .\start.bat
+    echo.
+    pause
+    exit /b 1
 )
-if exist "..\venv\Scripts\activate.bat" (
-    echo Found venv in parent, activating...
-    call ..\venv\Scripts\activate.bat
+
+:: Show venv info
+if defined VIRTUAL_ENV (
+    echo Using VIRTUAL_ENV: %VIRTUAL_ENV%
+) else (
+    echo WARNING: VIRTUAL_ENV not set. Using system Python.
 )
-if exist "..\ovenv\Scripts\activate.bat" (
-    echo Found ovenv in parent, activating...
-    call ..\ovenv\Scripts\activate.bat
-)
+echo.
 
 :: Install Python dependencies
 echo [1/3] Installing Python dependencies...
@@ -53,7 +63,7 @@ cd ..
 
 :: Start
 echo [3/3] Starting application...
-echo Backend: http://127.0.0.1:8000
+echo Backend: http://127.0.0.1:8001
 echo.
 
 cd frontend
