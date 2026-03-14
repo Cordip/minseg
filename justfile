@@ -1,5 +1,4 @@
 # Mineral Segmentation App — development commands
-# Install just: https://github.com/casey/just
 
 # List available commands
 default:
@@ -7,17 +6,17 @@ default:
 
 # ─── Development ──────────────────────────────────────────────
 
-# Run backend API server (port 8001)
+# Run backend API server
 [group('dev')]
 backend:
 	cd backend && uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 
-# Run frontend Electron app
+# Run frontend with Tauri dev mode
 [group('dev')]
 frontend:
-	cd frontend && npx electron .
+	cd frontend && npm run tauri dev
 
-# Install all dependencies (backend + frontend)
+# Install all dependencies
 [group('dev')]
 install:
 	cd backend && uv sync
@@ -30,12 +29,12 @@ install:
 test:
 	cd backend && uv run pytest tests/ -v
 
-# Run backend tests with coverage report
+# Run backend tests with coverage
 [group('test')]
 test-cov:
 	cd backend && uv run pytest tests/ -v --cov=. --cov-report=term-missing
 
-# Run a single test file (e.g. just test-file tests/test_main.py)
+# Run a single test file
 [group('test')]
 test-file file:
 	cd backend && uv run pytest {{file}} -v
@@ -60,13 +59,13 @@ build:
 [group('run')]
 [linux]
 run:
-	./frontend/dist/Mineral\ Segmentation-*-x86_64.AppImage
+	./frontend/src-tauri/target/release/mineral-segmentation
 
 # Launch built app (Windows)
 [group('run')]
 [windows]
 run:
-	cmd /c frontend\dist\win-unpacked\Mineral\ Segmentation.exe
+	frontend\src-tauri\target\release\mineral-segmentation.exe
 
 # ─── Cleanup ─────────────────────────────────────────────────
 
@@ -78,7 +77,7 @@ clean-backend:
 # Remove frontend build artifacts
 [group('clean')]
 clean-frontend:
-	rm -rf frontend/dist
+	rm -rf frontend/dist frontend/src-tauri/target
 
 # Remove all build artifacts
 [group('clean')]

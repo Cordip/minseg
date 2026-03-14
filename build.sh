@@ -1,32 +1,20 @@
 #!/bin/bash
-
-# ================================================
-#   Mineral Segmentation App - Protected Build (Linux)
-# ================================================
-
-set -e # Exit on error
+set -e
 
 echo "================================================"
-echo "   Mineral Segmentation App - Protected Build"
+echo "   Mineral Segmentation - Protected Build"
 echo "================================================"
 echo
 
 # Check dependencies
-if ! command -v uv &> /dev/null; then
-    echo "ERROR: uv not found! Please install uv (https://astral.sh/uv)"
-    exit 1
-fi
-if ! command -v node &> /dev/null; then
-    echo "ERROR: Node.js not found!"
-    exit 1
-fi
+command -v uv &>/dev/null || { echo "ERROR: uv not found!"; exit 1; }
+command -v node &>/dev/null || { echo "ERROR: Node.js not found!"; exit 1; }
+command -v cargo &>/dev/null || { echo "ERROR: Rust not found!"; exit 1; }
 
-# Step 1: Install Python dependencies and compile backend (Nuitka)
-echo "[1/5] Installing backend dependencies and compiling (Nuitka)..."
+# Step 1: Compile backend (Nuitka)
+echo "[1/2] Compiling backend (Nuitka)..."
 cd backend
 uv pip install -r requirements.txt
-
-# Clean previous Nuitka build artifacts
 rm -rf main.build main.onefile-build main.dist dist/backend
 
 uv run python -m nuitka \
@@ -50,52 +38,24 @@ uv run python -m nuitka \
   --include-module=websockets \
   main.py
 
-if [ ! -f "dist/backend" ]; then
-    echo "ERROR: Nuitka compilation failed — dist/backend not found"
-    exit 1
-fi
+[ -f "dist/backend" ] || { echo "ERROR: Nuitka failed"; exit 1; }
 echo "Backend compiled."
+
+# Copy binary as Tauri sidecar
+mkdir -p ../frontend/src-tauri/binaries
+cp dist/backend ../frontend/src-tauri/binaries/backend-x86_64-unknown-linux-gnu
 cd ..
 
-# Step 2: Install frontend dependencies
-echo "[2/5] Installing frontend dependencies..."
+# Step 2: Build Tauri app (Vite + Rust + packaging)
+echo "[2/2] Building Tauri app..."
 cd frontend
-if [ ! -d "node_modules" ]; then
-    npm install --silent
-fi
-cd ..
-
-# Step 3: Compile Electron main process with bytenode
-echo "[3/5] Compiling main.js with bytenode (Electron V8)..."
-cd frontend
-# Must compile with Electron's V8
-npx bytenode -e -c main.js
-
-# Swap package.json main to main-entry.js for production build using sed
-sed -i 's/"main": "main.js"/"main": "main-entry.js"/' package.json
-cd ..
-
-# Step 4: Minify renderer (esbuild)
-echo "[4/5] Minifying renderer (esbuild)..."
-cd frontend
-node esbuild.config.mjs
-sed -i 's/app-bundle\.js/app-bundle.min.js/g' public/app.html
-
-# Ensure dev files are restored even if build fails
-restore_dev_files() {
-    cd /home/cordis/Gits/python/two/new2/frontend
-    sed -i 's/app-bundle\.min\.js/app-bundle.js/g' public/app.html
-    sed -i 's/"main": "main-entry.js"/"main": "main.js"/' package.json
-}
-trap restore_dev_files EXIT
-
-# Step 5: Package with Electron Builder (AppImage only)
-echo "[5/5] Building Electron app..."
-npx electron-builder --linux AppImage
+npm install
+npm run tauri build
 
 cd ..
 echo
 echo "================================================"
-echo "   BUILD COMPLETE — Output in frontend/dist/"
+echo "   BUILD COMPLETE — Output in frontend/src-tauri/target/release/bundle/"
 echo "================================================"
-ls -F frontend/dist/
+ls frontend/src-tauri/target/release/bundle/appimage/ 2>/dev/null || true
+ls frontend/src-tauri/target/release/bundle/deb/ 2>/dev/null || true

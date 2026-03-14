@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 echo ================================================
-echo   Mineral Segmentation App - Protected Build
+echo   Mineral Segmentation - Protected Build
 echo ================================================
 echo.
 
@@ -9,20 +9,22 @@ where python >nul 2>&1
 if errorlevel 1 ( echo ERROR: Python not found! && pause && exit /b 1 )
 where node >nul 2>&1
 if errorlevel 1 ( echo ERROR: Node.js not found! && pause && exit /b 1 )
+where cargo >nul 2>&1
+if errorlevel 1 ( echo ERROR: Rust not found! && pause && exit /b 1 )
 
-:: Step 1: Install Python dependencies and compile backend (Nuitka)
-echo [1/5] Installing backend dependencies and compiling (Nuitka)...
+:: Step 1: Compile backend (Nuitka)
+echo [1/2] Compiling backend (Nuitka)...
 cd backend
 python -m pip install -r requirements.txt
-if errorlevel 1 ( echo ERROR: Failed to install Python dependencies && cd .. && pause && exit /b 1 )
+if errorlevel 1 ( echo ERROR: pip install failed && cd .. && pause && exit /b 1 )
 
-:: Clean previous Nuitka build artifacts
 if exist main.build rmdir /s /q main.build
 if exist main.onefile-build rmdir /s /q main.onefile-build
 if exist main.dist rmdir /s /q main.dist
 if exist dist\backend.exe del dist\backend.exe
 
 python -m nuitka ^
+  --assume-yes-for-downloads ^
   --onefile ^
   --output-dir=dist ^
   --output-filename=backend ^
@@ -42,62 +44,27 @@ python -m nuitka ^
   --include-module=PIL ^
   --include-module=websockets ^
   main.py
-if errorlevel 1 ( echo ERROR: Nuitka compilation failed && cd .. && pause && exit /b 1 )
-if not exist "dist\backend.exe" (
-    echo ERROR: Nuitka compilation failed — dist\backend.exe not found
-    cd .. && pause && exit /b 1
-)
+if errorlevel 1 ( echo ERROR: Nuitka failed && cd .. && pause && exit /b 1 )
+if not exist "dist\backend.exe" ( echo ERROR: backend.exe not found && cd .. && pause && exit /b 1 )
 echo Backend compiled.
+
+:: Copy binary as Tauri sidecar
+if not exist ..\frontend\src-tauri\binaries mkdir ..\frontend\src-tauri\binaries
+copy dist\backend.exe ..\frontend\src-tauri\binaries\backend-x86_64-pc-windows-msvc.exe
 cd ..
 
-:: Step 2: Install frontend dependencies
-echo [2/5] Installing frontend dependencies...
+:: Step 2: Build Tauri app
+echo [2/2] Building Tauri app...
 cd frontend
-if not exist node_modules call npm install --silent
+call npm install
+call npx tauri build
+if errorlevel 1 ( echo ERROR: Tauri build failed && cd .. && pause && exit /b 1 )
 cd ..
-
-:: Step 3: Compile Electron main process with bytenode
-echo [3/5] Compiling main.js with bytenode (Electron V8)...
-cd frontend
-:: Must compile with Electron's V8, not system Node
-npx bytenode -e -c main.js
-if errorlevel 1 ( echo ERROR: bytenode compile main.js failed && cd .. && pause && exit /b 1 )
-
-:: Swap package.json main to main-entry.js for production build
-powershell -Command "(Get-Content package.json) -replace '\"main\": \"main.js\"', '\"main\": \"main-entry.js\"' | Set-Content package.json"
-cd ..
-
-:: Step 4: Minify renderer (esbuild)
-echo [4/5] Minifying renderer (esbuild)...
-cd frontend
-node esbuild.config.mjs
-if errorlevel 1 ( echo ERROR: esbuild failed && cd .. && pause && exit /b 1 )
-powershell -Command "(Get-Content public\app.html) -replace 'app-bundle\.js', 'app-bundle.min.js' | Set-Content public\app.html"
-
-:: Step 5: Package with Electron Builder
-echo [5/5] Building Electron app...
-call npx electron-builder --win
-set BUILD_ERR=!errorlevel!
-
-:: Always restore dev files regardless of build result
-call :RESTORE_DEV
-cd ..
-
-if !BUILD_ERR! neq 0 (
-    echo ERROR: electron-builder failed
-    pause
-    exit /b 1
-)
 
 echo.
 echo ================================================
-echo   BUILD COMPLETE — Output in frontend\dist\
+echo   BUILD COMPLETE
 echo ================================================
-dir frontend\dist\*.exe 2>nul
+dir frontend\src-tauri\target\release\bundle\nsis\*.exe 2>nul
 pause
-exit /b 0
-
-:RESTORE_DEV
-powershell -Command "(Get-Content public\app.html) -replace 'app-bundle\.min\.js', 'app-bundle.js' | Set-Content public\app.html"
-powershell -Command "(Get-Content package.json) -replace '\"main\": \"main-entry.js\"', '\"main\": \"main.js\"' | Set-Content package.json"
 exit /b 0

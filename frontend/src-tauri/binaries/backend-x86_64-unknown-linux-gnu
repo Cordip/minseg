@@ -1,0 +1,11 @@
+#!/bin/bash
+BACKEND_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Find the backend directory — check common locations
+for d in "$BACKEND_DIR/../../../../backend" "$HOME/Gits/python/two/new2/backend"; do
+    if [ -f "$d/main.py" ]; then
+        cd "$d"
+        exec .venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port "${PORT:-8001}"
+    fi
+done
+echo "ERROR: backend/main.py not found" >&2
+exit 1

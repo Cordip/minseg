@@ -14,3 +14,10 @@ backend/dist
 *.build/
 *.onefile-build/
 *.dist/
+
+#misc (agent sort this)
+.tmp
+
+# Tauri
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/
