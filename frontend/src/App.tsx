@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 import type { PatchCoord, SelectedSegment, ContextMenuState } from './types';
 import { useApi } from './hooks/useApi';
 import { useCanvas } from './hooks/useCanvas';
@@ -8,12 +9,16 @@ import { useTagging } from './hooks/useTagging';
 import { useKeyboard } from './hooks/useKeyboard';
 import { drawOnCanvas, drawSelectionStripes } from './utils';
 import WelcomeScreen from './components/WelcomeScreen';
+import Toolbar from './components/Toolbar';
+import Minimap from './components/Minimap';
+import ImageViewer from './components/ImageViewer';
+import TagPanel from './components/TagPanel';
+import ContextMenu from './components/ContextMenu';
+import HelpModal from './components/HelpModal';
 
 export default function App() {
-  // API
   const { api, isReady, status: apiStatus } = useApi();
 
-  // App-level state
   const [imagesAligned, setImagesAligned] = useState(false);
   const [gridSize, setGridSize] = useState({ rows: 0, cols: 0 });
   const [currentPatch, setCurrentPatch] = useState<PatchCoord>({ y: 0, x: 0 });
@@ -24,11 +29,9 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [selectedSegments, setSelectedSegments] = useState<SelectedSegment[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [_sidebarWidth, _setSidebarWidth] = useState(400);
 
   const currentView = (isXpl ? 'xpl' : 'ppl') + (isXpl90 ? '90' : '45');
 
-  // Canvas refs for image layers
   const canvasBgRef = useRef<HTMLCanvasElement>(null);
   const canvasBoundRef = useRef<HTMLCanvasElement>(null);
   const canvasSegRef = useRef<HTMLCanvasElement>(null);
@@ -37,20 +40,18 @@ export default function App() {
   const canvasSelectionRef = useRef<HTMLCanvasElement>(null);
   const quickInputRef = useRef<HTMLInputElement>(null);
 
-  // Hooks
   const canvas = useCanvas();
   const seg = useSegmentation(api, currentPatch, currentView, imagesAligned, gridSize);
   const tree = useTree(api);
   const tagging = useTagging(api, selectedSegments, setSelectedSegments, tree.fetchTree, seg.reloadPatch);
 
-  // Draw images on canvases when data changes
+  // Draw images
   useEffect(() => { drawOnCanvas(canvasBgRef.current, seg.bgImage); }, [seg.bgImage]);
   useEffect(() => { drawOnCanvas(canvasSegRef.current, seg.segImage); }, [seg.segImage]);
   useEffect(() => { drawOnCanvas(canvasBoundRef.current, seg.boundsImage); }, [seg.boundsImage]);
   useEffect(() => { drawOnCanvas(canvasBorderRef.current, seg.bordersImage); }, [seg.bordersImage]);
   useEffect(() => { drawOnCanvas(canvasUntaggedRef.current, seg.untaggedImage); }, [seg.untaggedImage]);
 
-  // Selection mask
   useEffect(() => {
     if (selectedSegments.length === 0) {
       const c = canvasSelectionRef.current;
@@ -67,7 +68,6 @@ export default function App() {
       .catch(() => {});
   }, [selectedSegments, currentPatch, api]);
 
-  // Check if already aligned on startup
   useEffect(() => {
     if (!api) return;
     api.getStatus().then(s => {
@@ -79,32 +79,45 @@ export default function App() {
     }).catch(() => {});
   }, [api]);
 
-  // Fetch tree when editor becomes active
-  useEffect(() => {
-    if (api && imagesAligned) tree.fetchTree();
-  }, [api, imagesAligned]);
+  useEffect(() => { if (api && imagesAligned) tree.fetchTree(); }, [api, imagesAligned]);
+  useEffect(() => { canvas.resetView(); }, [currentPatch]);
 
-  // Reset view on patch change
-  useEffect(() => {
-    canvas.resetView();
-  }, [currentPatch]);
+  const handleNavigate = useCallback((patch: PatchCoord) => {
+    setCurrentPatch({
+      y: Math.max(0, Math.min(gridSize.rows - 1, patch.y)),
+      x: Math.max(0, Math.min(gridSize.cols - 1, patch.x)),
+    });
+  }, [gridSize]);
 
-  // WelcomeScreen callback
-  const handleWelcomeReady = useCallback((grid: { rows: number; cols: number }) => {
-    setGridSize(grid);
-    setImagesAligned(true);
-  }, []);
+  const handleSave = useCallback(async () => {
+    if (!api) return;
+    try {
+      const selected = await open({ directory: true });
+      if (typeof selected === 'string') api.saveProject(selected).catch(() => {});
+    } catch { /* user cancelled */ }
+  }, [api]);
 
-  // Keyboard handlers
-  const keyboardHandlers = {
+  const handleExport = useCallback(async () => {
+    if (!api) return;
+    try {
+      const selected = await open({ directory: true });
+      if (typeof selected === 'string') api.exportProject(selected).catch(() => {});
+    } catch { /* user cancelled */ }
+  }, [api]);
+
+  const handleRefresh = useCallback(() => {
+    tree.fetchTree();
+    seg.reloadPatch();
+    tagging.refreshTags();
+  }, [tree.fetchTree, seg.reloadPatch, tagging.refreshTags]);
+
+  useKeyboard({
     onUndo: tagging.handleUndo,
     onRedo: tagging.handleRedo,
-    onNavigate: (dx: number, dy: number) => {
-      setCurrentPatch(p => ({
-        x: Math.max(0, Math.min(gridSize.cols - 1, p.x + dx)),
-        y: Math.max(0, Math.min(gridSize.rows - 1, p.y + dy)),
-      }));
-    },
+    onNavigate: (dx, dy) => setCurrentPatch(p => ({
+      x: Math.max(0, Math.min(gridSize.cols - 1, p.x + dx)),
+      y: Math.max(0, Math.min(gridSize.rows - 1, p.y + dy)),
+    })),
     onToggleBounds: () => setShowBounds(v => !v),
     onToggleSegments: () => setShowSegments(v => !v),
     onToggleXpl90: () => setIsXpl90(v => !v),
@@ -114,31 +127,23 @@ export default function App() {
     onEscape: () => {
       if (contextMenu) { setContextMenu(null); return; }
       if (showHelp) { setShowHelp(false); return; }
-      tagging.setQuickInput(null);
-      tagging.setQuickFilter('');
-      setSelectedSegments([]);
-      tree.dispatch({ type: 'CLEAR_SELECTION' });
+      tagging.setQuickInput(null); tagging.setQuickFilter('');
+      setSelectedSegments([]); tree.dispatch({ type: 'CLEAR_SELECTION' });
     },
     onEnter: () => {
-      if (selectedSegments.length > 0 && !quickInputRef.current?.matches(':focus')) {
+      if (selectedSegments.length > 0 && !quickInputRef.current?.matches(':focus'))
         setTimeout(() => quickInputRef.current?.focus(), 50);
-      }
     },
     onZoom: canvas.handleZoom,
-  };
+  }, imagesAligned, tagging.quickInput !== null);
 
-  useKeyboard(keyboardHandlers, imagesAligned, tagging.quickInput !== null);
-
-  // Image click handler
   const handleImageClick = useCallback((e: React.MouseEvent) => {
     if (!seg.patchReady || !api || canvas.isPanningRef.current) return;
     const viewer = canvas.viewerRef.current;
     if (!viewer) return;
-    const panelRect = viewer.getBoundingClientRect();
-    const screenX = e.clientX - panelRect.left;
-    const screenY = e.clientY - panelRect.top;
-    const x = Math.floor((screenX - canvas.offsetRef.current.x) / canvas.zoomRef.current);
-    const y = Math.floor((screenY - canvas.offsetRef.current.y) / canvas.zoomRef.current);
+    const rect = viewer.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left - canvas.offsetRef.current.x) / canvas.zoomRef.current);
+    const y = Math.floor((e.clientY - rect.top - canvas.offsetRef.current.y) / canvas.zoomRef.current);
     if (x < 0 || y < 0 || x >= 1024 || y >= 1024) return;
     api.getSegmentAtPoint(currentPatch.y, currentPatch.x, x, y).then(r => {
       if (r.status === 'success' && r.segment_id > 0) {
@@ -158,180 +163,66 @@ export default function App() {
     }).catch(() => {});
   }, [api, seg.patchReady, currentPatch, canvas, tagging]);
 
-  // ─── Render ──────────────────────────────────────────────
-
   if (!isReady) {
     return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: '#1a1a2e', color: '#eaeaea', fontFamily: 'system-ui',
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <h1>Mineral Segmentation v2</h1>
-          <p>{apiStatus}</p>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#1a1a2e', color: '#eaeaea', fontFamily: 'system-ui' }}>
+        <div style={{ textAlign: 'center' }}><h1>Mineral Segmentation v2</h1><p>{apiStatus}</p></div>
       </div>
     );
   }
 
-  if (!imagesAligned && api) {
-    return <WelcomeScreen api={api} onReady={handleWelcomeReady} />;
-  }
+  if (!imagesAligned && api) return <WelcomeScreen api={api} onReady={g => { setGridSize(g); setImagesAligned(true); }} />;
 
-  // Editor view (minimal layout — full components in Phase 3)
   return (
     <div className="app-container" onContextMenu={e => e.preventDefault()}>
-      {/* Toolbar */}
-      <div className="toolbar">
-        <div className="toolbar-group">
-          <button className="btn btn-secondary" onClick={() => setIsXpl(v => !v)}>
-            {isXpl ? 'XPL' : 'PPL'}
-          </button>
-          <button className="btn btn-secondary" onClick={() => setIsXpl90(v => !v)}>
-            {isXpl90 ? '90°' : '45°'}
-          </button>
-        </div>
-        <div className="toolbar-divider" />
-        <div className="toolbar-group">
-          <button className={`btn btn-secondary ${showBounds ? 'active' : ''}`}
-            onClick={() => setShowBounds(v => !v)}>Границы (S)</button>
-          <button className={`btn btn-secondary ${showSegments ? 'active' : ''}`}
-            onClick={() => setShowSegments(v => !v)}>Сегменты (B)</button>
-          <button className="btn" style={{
-            backgroundColor: seg.showUntagged ? '#ff4757' : '#6c757d',
-            color: '#fff', border: 'none',
-          }} onClick={seg.toggleUntagged}>Неразмеченные</button>
-        </div>
-        <div className="toolbar-divider" />
-        <div className="toolbar-group">
-          <button className="btn btn-secondary"
-            onClick={() => setCurrentPatch(p => ({ ...p, x: Math.max(0, p.x - 1) }))}
-            disabled={currentPatch.x === 0}>◀</button>
-          <span className="patch-counter">{currentPatch.x + 1}/{gridSize.cols}</span>
-          <button className="btn btn-secondary"
-            onClick={() => setCurrentPatch(p => ({ ...p, x: Math.min(gridSize.cols - 1, p.x + 1) }))}
-            disabled={currentPatch.x >= gridSize.cols - 1}>▶</button>
-          <span style={{ margin: '0 5px', color: '#555' }}>|</span>
-          <button className="btn btn-secondary"
-            onClick={() => setCurrentPatch(p => ({ ...p, y: Math.max(0, p.y - 1) }))}
-            disabled={currentPatch.y === 0}>▲</button>
-          <span className="patch-counter">{currentPatch.y + 1}/{gridSize.rows}</span>
-          <button className="btn btn-secondary"
-            onClick={() => setCurrentPatch(p => ({ ...p, y: Math.min(gridSize.rows - 1, p.y + 1) }))}
-            disabled={currentPatch.y >= gridSize.rows - 1}>▼</button>
-        </div>
-        <div className="toolbar-divider" />
-        <button className="btn btn-secondary" onClick={tagging.handleUndo}
-          disabled={!tree.canUndo} style={{ opacity: tree.canUndo ? 1 : 0.3 }}>↩</button>
-        <button className="btn btn-secondary" onClick={tagging.handleRedo}
-          disabled={!tree.canRedo} style={{ opacity: tree.canRedo ? 1 : 0.3 }}>↪</button>
-        <button className="btn btn-secondary" style={{ marginLeft: 'auto' }}
-          onClick={() => setShowHelp(v => !v)}>?</button>
-      </div>
-
-      {/* Main content */}
+      <Toolbar
+        isXpl={isXpl} isXpl90={isXpl90} showSegments={showSegments} showBounds={showBounds}
+        showUntagged={seg.showUntagged} currentPatch={currentPatch} gridSize={gridSize}
+        canUndo={tree.canUndo} canRedo={tree.canRedo}
+        onToggleXpl={() => setIsXpl(v => !v)} onToggleXpl90={() => setIsXpl90(v => !v)}
+        onToggleSegments={() => setShowSegments(v => !v)} onToggleBounds={() => setShowBounds(v => !v)}
+        onToggleUntagged={seg.toggleUntagged} onNavigate={handleNavigate}
+        onUndo={tagging.handleUndo} onRedo={tagging.handleRedo}
+        onSave={handleSave} onExport={handleExport} onHelp={() => setShowHelp(v => !v)}
+      />
       <div className="main-content">
-        {/* Minimap placeholder */}
-        <div className="minimap-panel">
-          <div className="minimap-header">Миникарта</div>
-          <div style={{ padding: 10, color: '#888', fontSize: 12 }}>
-            {seg.segProgress.total > 0 &&
-              `${seg.segProgress.done}/${seg.segProgress.total} (${Math.round(seg.segProgress.done / seg.segProgress.total * 100)}%)`
-            }
-          </div>
-        </div>
-
-        {/* Viewer */}
-        <div className="viewer-panel" ref={canvas.viewerCallbackRef}
+        <Minimap
+          minimapData={seg.minimapData} currentPatch={currentPatch} gridSize={gridSize}
+          patchStates={seg.patchStates} segProgress={seg.segProgress} patchStats={seg.patchStats}
+          onNavigate={handleNavigate}
+        />
+        <ImageViewer
+          zoom={canvas.zoom} offset={canvas.offset}
+          showSegments={showSegments} showBounds={showBounds}
+          showUntagged={seg.showUntagged} hasSelection={selectedSegments.length > 0}
+          patchReady={seg.patchReady} viewerCallbackRef={canvas.viewerCallbackRef}
           onMouseDown={canvas.handleMouseDown} onMouseMove={canvas.handleMouseMove}
-          onMouseUp={canvas.handleMouseUp} onMouseLeave={canvas.handleMouseUp}
-          onContextMenu={e => e.preventDefault()}>
-          <div className="viewer-canvas" style={{
-            transform: `translate(${canvas.offset.x}px, ${canvas.offset.y}px) scale(${canvas.zoom})`,
-            transformOrigin: '0 0', position: 'relative', width: 1024, height: 1024,
-          }} onClick={handleImageClick}>
-            <canvas ref={canvasBgRef} style={{ position: 'absolute', top: 0, left: 0, zIndex: 1 }} />
-            <canvas ref={canvasBoundRef} style={{
-              position: 'absolute', top: 0, left: 0, opacity: showBounds ? 0.8 : 0,
-              mixBlendMode: 'multiply', zIndex: 2, pointerEvents: 'none',
-            }} />
-            <canvas ref={canvasSegRef} style={{
-              position: 'absolute', top: 0, left: 0, opacity: showSegments ? 1 : 0,
-              zIndex: 3, pointerEvents: 'none',
-            }} />
-            <canvas ref={canvasBorderRef} style={{
-              position: 'absolute', top: 0, left: 0, opacity: showSegments ? 0.6 : 0,
-              mixBlendMode: 'multiply', zIndex: 4, pointerEvents: 'none',
-            }} />
-            <canvas ref={canvasUntaggedRef} style={{
-              position: 'absolute', top: 0, left: 0, opacity: seg.showUntagged ? 0.6 : 0,
-              zIndex: 5, pointerEvents: 'none',
-            }} />
-            <canvas ref={canvasSelectionRef} style={{
-              position: 'absolute', top: 0, left: 0, opacity: selectedSegments.length > 0 ? 0.5 : 0,
-              zIndex: 6, pointerEvents: 'none',
-            }} />
-            {!seg.patchReady && (
-              <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', color: '#fff', zIndex: 7,
-              }}>Обработка...</div>
-            )}
-          </div>
-        </div>
-
-        {/* Tags panel placeholder */}
-        <div className="tags-panel" style={{ width: _sidebarWidth }}>
-          <div className="tags-header">
-            <span>Теги минералов ({tree.treeData.length})</span>
-          </div>
-          <div className="tags-list" style={{ color: '#888', padding: 16, fontSize: 13 }}>
-            {tree.treeData.length === 0 && 'Нет тегов. Нажмите на сегмент, чтобы назначить тег.'}
-            {tree.treeData.map(tag => (
-              <div key={tag.name} style={{ padding: '4px 0' }}>
-                <span style={{
-                  display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
-                  background: tag.color, marginRight: 8, verticalAlign: 'middle',
-                }} />
-                {tag.name} ({tag.total_segments})
-              </div>
-            ))}
-          </div>
-        </div>
+          onMouseUp={canvas.handleMouseUp} onClick={handleImageClick}
+          canvasBgRef={canvasBgRef} canvasBoundRef={canvasBoundRef}
+          canvasSegRef={canvasSegRef} canvasBorderRef={canvasBorderRef}
+          canvasUntaggedRef={canvasUntaggedRef} canvasSelectionRef={canvasSelectionRef}
+        />
+        <TagPanel
+          treeData={tree.treeData} expandedNodes={tree.expandedNodes} treeSelection={tree.treeSelection}
+          canUndo={tree.canUndo} canRedo={tree.canRedo}
+          quickInput={tagging.quickInput} selectedSegments={selectedSegments}
+          quickFilter={tagging.quickFilter} quickHighlight={tagging.quickHighlight} tags={tagging.tags}
+          onToggleNode={key => tree.dispatch({ type: 'TOGGLE_NODE', key })}
+          onTreeClick={tree.handleTreeClick} onNavigate={handleNavigate}
+          onContextMenu={setContextMenu} onUndo={tagging.handleUndo} onRedo={tagging.handleRedo}
+          onFilterChange={tagging.setQuickFilter} onHighlightChange={tagging.setQuickHighlight}
+          onApplyTag={tagging.applyTag} onCancelInput={() => { tagging.setQuickInput(null); tagging.setQuickFilter(''); setSelectedSegments([]); }}
+          quickInputRef={quickInputRef}
+        />
       </div>
-
-      {/* Help modal */}
-      {showHelp && (
-        <div className="modal-overlay" onClick={() => setShowHelp(false)}>
-          <div className="help-modal" onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 16 }}>Горячие клавиши</h3>
-            <div className="help-grid">
-              {([
-                ['S', 'Границы сегментов'],
-                ['B', 'Цветные сегменты'],
-                ['X', 'Угол 45°/90°'],
-                ['P', 'Режим PPL/XPL'],
-                ['U', 'Неразмеченные'],
-                ['H', 'Эта справка'],
-                ['←→↑↓', 'Навигация по патчам'],
-                ['Ctrl+=', 'Приблизить'],
-                ['Ctrl+-', 'Отдалить'],
-                ['ПКМ+тянуть', 'Перемещение'],
-                ['Колесо', 'Масштаб к курсору'],
-                ['Ctrl+клик', 'Мультивыбор'],
-              ] as const).map(([key, desc]) => (
-                <span key={key} style={{ display: 'contents' }}>
-                  <kbd>{key}</kbd>
-                  <span>{desc}</span>
-                </span>
-              ))}
-            </div>
-            <button className="btn btn-secondary" style={{ marginTop: 16, width: '100%' }}
-              onClick={() => setShowHelp(false)}>Закрыть</button>
-          </div>
-        </div>
+      {contextMenu && api && (
+        <ContextMenu menu={contextMenu} api={api} treeData={tree.treeData}
+          treeSelection={tree.treeSelection} resolveTreeSelection={tree.resolveTreeSelection}
+          onClose={() => setContextMenu(null)} onRefresh={handleRefresh}
+          onNavigate={handleNavigate} onSelectSegments={segs => { setSelectedSegments(segs); setTimeout(() => quickInputRef.current?.focus(), 50); }}
+        />
       )}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
