@@ -36,6 +36,25 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y patchelf ccache
 
+      - name: Install ccache (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ccache -y
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ccache
+            ~/AppData/Local/ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('backend/*.py') }}
+          restore-keys: ccache-${{ runner.os }}-
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: npm-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install backend deps
         working-directory: backend
         run: uv pip install -r requirements.txt --system
@@ -50,6 +69,7 @@ jobs:
         run: |
           python -m nuitka \
             --assume-yes-for-downloads \
+            --ccache \
             --onefile \
             --output-dir=dist \
             --output-filename=backend \
