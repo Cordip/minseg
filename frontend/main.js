@@ -33,20 +33,6 @@ function getPythonCommand() {
     }
 }
 
-async function killPort(port) {
-    return new Promise(resolve => {
-        if (process.platform === 'win32') {
-            exec(`for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port}') do taskkill /F /PID %a`, () => {
-                setTimeout(resolve, 1000);
-            });
-        } else {
-            exec(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, () => {
-                setTimeout(resolve, 500);
-            });
-        }
-    });
-}
-
 async function startBackend() {
     const port = await findFreePort();
     API_URL = `http://127.0.0.1:${port}`;
