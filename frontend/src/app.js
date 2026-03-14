@@ -566,67 +566,6 @@ function App() {
 
     useEffect(() => { showHelpRef.current = showHelp; }, [showHelp]);
 
-    // Setup keyboard shortcuts
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
-                e.preventDefault();
-                const factor = e.key === '-' ? 0.8 : 1.2;
-                const newZoom = Math.max(0.1, Math.min(10, zoom * factor));
-                setZoom(newZoom);
-                return;
-            }
-            // H toggles help modal (immediate, not buffered)
-            if (e.key.toLowerCase() === 'h' && !e.ctrlKey) {
-                setShowHelp(v => !v);
-                return;
-            }
-            // Esc closes help modal
-            if (e.key === 'Escape' && showHelpRef.current) {
-                setShowHelp(false);
-                return;
-            }
-            if (e.ctrlKey && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
-            if (e.ctrlKey && e.key === 'y') { e.preventDefault(); handleRedo(); return; }
-            if (e.key === 'Escape') { setQuickInput(null); setQuickFilter(''); setSelectedSegments([]); setTreeSelection(new Set()); return; }
-            if (e.key === 'Enter' && selectedSegments.length > 0 && !quickInputRef.current?.matches(':focus')) {
-                e.preventDefault(); setTimeout(() => quickInputRef.current?.focus(), 50); return;
-            }
-            // Block all hotkeys while help modal is open
-            if (showHelpRef.current) return;
-
-            switch(e.key.toLowerCase()) {
-                case 'x':
-                    toggleXplMode();
-                    break;
-                case 's':
-                    setShowBounds(!showBounds);
-                    break;
-                case 'b':
-                    setShowSegments(!showSegments);
-                    break;
-                case 'p':
-                    togglePplMode();
-                    break;
-                case 'arrowright':
-                    navigatePatch(0, 1);
-                    break;
-                case 'arrowleft':
-                    navigatePatch(0, -1);
-                    break;
-                case 'arrowdown':
-                    navigatePatch(1, 0);
-                    break;
-                case 'arrowup':
-                    navigatePatch(-1, 0);
-                    break;
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [showSegments, showBounds, currentPatch, gridSize, selectedSegments]);
-    
     // Electron menu shortcuts
     useEffect(() => {
         if (window.electronAPI) {
@@ -697,12 +636,6 @@ function App() {
         const interval = setInterval(checkPatchReady, 1000);
         return () => clearInterval(interval);
     }, [api, imagesAligned, currentPatch, patchReady]);
-    
-    // Load patch when current patch or view changes
-    useEffect(() => {
-        if (!api || !imagesAligned) return;
-        loadCurrentPatch();
-    }, [api, currentPatch, currentView, imagesAligned, loadCurrentPatch]);
     
     // Continue loading after images are aligned
     useEffect(() => {
@@ -862,7 +795,13 @@ function App() {
             console.error('Load patch error:', e);
         }
     }, [api, imagesAligned, currentPatch, currentView]);
-    
+
+    // Load patch when current patch or view changes
+    useEffect(() => {
+        if (!api || !imagesAligned) return;
+        loadCurrentPatch();
+    }, [api, currentPatch, currentView, imagesAligned, loadCurrentPatch]);
+
     const loadMinimap = async () => {
         if (!api) return;
         
@@ -998,6 +937,48 @@ function App() {
             api.get('/api/tags').then(t => setTags(t.tag_colors || {}));
         });
     }, [api, canRedo, fetchTree, loadCurrentPatch]);
+
+    // Setup keyboard shortcuts (after all handlers are declared)
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
+                e.preventDefault();
+                const factor = e.key === '-' ? 0.8 : 1.2;
+                const newZoom = Math.max(0.1, Math.min(10, zoom * factor));
+                setZoom(newZoom);
+                return;
+            }
+            if (e.key.toLowerCase() === 'h' && !e.ctrlKey) {
+                setShowHelp(v => !v);
+                return;
+            }
+            if (e.key === 'Escape' && showHelpRef.current) {
+                setShowHelp(false);
+                return;
+            }
+            if (e.ctrlKey && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
+            if (e.ctrlKey && e.key === 'y') { e.preventDefault(); handleRedo(); return; }
+            if (e.key === 'Escape') { setQuickInput(null); setQuickFilter(''); setSelectedSegments([]); setTreeSelection(new Set()); return; }
+            if (e.key === 'Enter' && selectedSegments.length > 0 && !quickInputRef.current?.matches(':focus')) {
+                e.preventDefault(); setTimeout(() => quickInputRef.current?.focus(), 50); return;
+            }
+            if (showHelpRef.current) return;
+
+            switch(e.key.toLowerCase()) {
+                case 'x': toggleXplMode(); break;
+                case 's': setShowBounds(!showBounds); break;
+                case 'b': setShowSegments(!showSegments); break;
+                case 'p': togglePplMode(); break;
+                case 'arrowright': navigatePatch(0, 1); break;
+                case 'arrowleft': navigatePatch(0, -1); break;
+                case 'arrowdown': navigatePatch(1, 0); break;
+                case 'arrowup': navigatePatch(-1, 0); break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showSegments, showBounds, currentPatch, gridSize, selectedSegments, handleUndo, handleRedo]);
 
     const startResize = useCallback((e) => {
         e.preventDefault();
