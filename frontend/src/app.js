@@ -560,6 +560,8 @@ function App() {
                 apiUrl = await window.electronAPI.getApiUrl();
             }
             setApi(createApi(apiUrl));
+            const ls = document.getElementById('loading-screen');
+            if (ls) ls.style.display = 'none';
         };
         initApi();
     }, []);
