@@ -45,39 +45,35 @@ async function startBackend() {
     const binaryPathProd = path.join(process.resourcesPath, 'backend', binaryName);
     const binaryPathDev = path.resolve(__dirname, '..', 'backend', 'dist', binaryName);
     
-    let execPath = null;
-    let cwd = null;
-    let spawnArgs = [];
-    
-    if (fs.existsSync(binaryPathProd)) {
-        execPath = binaryPathProd;
-        cwd = path.dirname(binaryPathProd);
-    } else if (fs.existsSync(binaryPathDev)) {
-        execPath = binaryPathDev;
-        cwd = path.dirname(binaryPathDev);
-    }
-    
-    if (execPath) {
+    const isFrozen = app.isPackaged;
+
+    if (isFrozen) {
+        // Production: use compiled Nuitka binary
+        const binaryPath = fs.existsSync(binaryPathProd) ? binaryPathProd : binaryPathDev;
+        if (!binaryPath || !fs.existsSync(binaryPath)) {
+            console.error('Compiled backend binary not found!');
+            return false;
+        }
         console.log('=== Starting Compiled Backend ===');
-        console.log('Executable:', execPath);
-        pythonProcess = spawn(execPath, spawnArgs, {
-            cwd: cwd,
+        console.log('Executable:', binaryPath);
+        pythonProcess = spawn(binaryPath, [], {
+            cwd: path.dirname(binaryPath),
             shell: false,
             stdio: 'pipe',
             env: { ...process.env, PORT: String(port) }
         });
     } else {
-        console.log('=== Starting Python Backend (Dev Fallback) ===');
+        // Dev: always use Python + uvicorn
         const backendDir = path.resolve(__dirname, '..', 'backend');
         const python = getPythonCommand();
-        console.log('Python command:', python);
-        console.log('Backend Dir:', backendDir);
-        
+        console.log('=== Starting Python Backend (Dev) ===');
+        console.log('Python:', python, 'Port:', port);
+
         if (!fs.existsSync(backendDir)) {
             console.error('Backend directory not found!');
             return false;
         }
-        
+
         pythonProcess = spawn(python, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(port)], {
             cwd: backendDir,
             shell: true,
