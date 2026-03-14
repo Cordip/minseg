@@ -4,6 +4,7 @@ await build({
     entryPoints: ['src/app.js'],
     outfile: 'src/app-bundle.js',
     bundle: true,
+    minify: true,
     format: 'iife',
     define: {
         'process.env.NODE_ENV': '"production"',

@@ -75,23 +75,14 @@ npx bytenode -e -c main.js
 sed -i 's/"main": "main.js"/"main": "main-entry.js"/' package.json
 cd ..
 
-# Step 4: Obfuscate renderer with javascript-obfuscator
-echo "[4/5] Obfuscating renderer (javascript-obfuscator)..."
+# Step 4: Bundle and minify renderer (esbuild)
+echo "[4/5] Bundling renderer (esbuild)..."
 cd frontend
 node esbuild.config.mjs
-npx javascript-obfuscator src/app-bundle.js \
-    --output src/app-bundle.obf.js \
-    --compact true \
-    --string-array true \
-    --string-array-encoding base64
-
-# Update app.html to use obfuscated bundle using sed
-sed -i 's/app-bundle\.js/app-bundle.obf.js/g' public/app.html
 
 # Ensure dev files are restored even if build fails
 restore_dev_files() {
     cd /home/cordis/Gits/python/two/new2/frontend
-    sed -i 's/app-bundle\.obf\.js/app-bundle.js/g' public/app.html
     sed -i 's/"main": "main-entry.js"/"main": "main.js"/' package.json
 }
 trap restore_dev_files EXIT
