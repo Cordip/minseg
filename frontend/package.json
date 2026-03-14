@@ -4,7 +4,8 @@
   "description": "Desktop application for mineral grain segmentation and annotation",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "node esbuild.config.mjs && electron .",
+    "bundle": "node esbuild.config.mjs",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
@@ -17,6 +18,7 @@
   "devDependencies": {
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
+    "esbuild": "^0.27.4",
     "javascript-obfuscator": "^4.2.2"
   },
   "dependencies": {

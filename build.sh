@@ -78,7 +78,7 @@ cd ..
 # Step 4: Obfuscate renderer with javascript-obfuscator
 echo "[4/5] Obfuscating renderer (javascript-obfuscator)..."
 cd frontend
-cp src/app.js src/app-bundle.js
+node esbuild.config.mjs
 npx javascript-obfuscator src/app-bundle.js \
     --output src/app-bundle.obf.js \
     --compact true \
@@ -86,12 +86,12 @@ npx javascript-obfuscator src/app-bundle.js \
     --string-array-encoding base64
 
 # Update app.html to use obfuscated bundle using sed
-sed -i 's/app\.js/app-bundle.obf.js/g' public/app.html
+sed -i 's/app-bundle\.js/app-bundle.obf.js/g' public/app.html
 
 # Ensure dev files are restored even if build fails
 restore_dev_files() {
     cd /home/cordis/Gits/python/two/new2/frontend
-    sed -i 's/app-bundle\.obf\.js/app.js/g' public/app.html
+    sed -i 's/app-bundle\.obf\.js/app-bundle.js/g' public/app.html
     sed -i 's/"main": "main-entry.js"/"main": "main.js"/' package.json
 }
 trap restore_dev_files EXIT
