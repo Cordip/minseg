@@ -875,7 +875,7 @@ function App() {
     };
     
     const toggleXplMode = () => setIsXpl90(prev => !prev);
-    const togglePplMode = () => setIsXpl(prev => !prev);\n    useEffect(() => { setCurrentView((isXpl ? 'xpl' : 'ppl') + (isXpl90 ? '90' : '45')); }, [isXpl, isXpl90]);
+    const togglePplMode = () => setIsXpl(prev => !prev);
     
     // Автоматическая и надежная синхронизация вида
     useEffect(() => {
