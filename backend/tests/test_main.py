@@ -616,7 +616,7 @@ class TestExport:
             assert os.path.isdir(os.path.join(out, folder))
         assert os.path.isfile(os.path.join(out, 'xpl45', 'patch_000_000.png'))
         assert os.path.isfile(os.path.join(out, 'segments', 'patch_000_000.png'))
-        with open(os.path.join(out, 'tags.json')) as f:
+        with open(os.path.join(out, 'tags.json'), encoding="utf-8") as f:
             data = json.load(f)
         assert data == {"Кварц": "#aabbcc"}
 
