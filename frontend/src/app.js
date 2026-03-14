@@ -566,16 +566,6 @@ function App() {
 
     useEffect(() => { showHelpRef.current = showHelp; }, [showHelp]);
 
-    // Electron menu shortcuts
-    useEffect(() => {
-        if (window.electronAPI) {
-            window.electronAPI.onMenuLoadImages(() => handleLoadImages());
-            window.electronAPI.onMenuSaveProject(() => handleSaveProject());
-            window.electronAPI.onShortcut((key) => {
-                // Handle shortcuts from Electron menu
-            });
-        }
-    }, []);
     
     // Poll segmentation progress (2s when processing, 5s when idle)
     const isProcessingRef = useRef(false);

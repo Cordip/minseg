@@ -33,6 +33,7 @@
       "buildResources": "build"
     },
     "files": [
+      "main.js",
       "main-entry.js",
       "preload.js",
       "src/app-bundle.js",
