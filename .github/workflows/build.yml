@@ -49,6 +49,7 @@ jobs:
         shell: bash
         run: |
           python -m nuitka \
+            --assume-yes-for-downloads \
             --onefile \
             --output-dir=dist \
             --output-filename=backend \
