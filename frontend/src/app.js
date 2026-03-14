@@ -559,7 +559,16 @@ function App() {
             if (window.electronAPI) {
                 apiUrl = await window.electronAPI.getApiUrl();
             }
-            setApi(createApi(apiUrl));
+            const newApi = createApi(apiUrl);
+            setApi(newApi);
+            try {
+                const status = await newApi.get('/api/status');
+                if (status.images_aligned) {
+                    setImagesAligned(true);
+                    setImagesLoaded(true);
+                    setGridSize(status.grid_size);
+                }
+            } catch (e) {}
             const ls = document.getElementById('loading-screen');
             if (ls) ls.style.display = 'none';
         };
