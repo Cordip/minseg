@@ -46,6 +46,7 @@ jobs:
 
       - name: Compile backend (Nuitka)
         working-directory: backend
+        shell: bash
         run: |
           python -m nuitka \
             --onefile \
