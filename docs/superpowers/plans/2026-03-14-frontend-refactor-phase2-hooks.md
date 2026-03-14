@@ -17,7 +17,7 @@
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `frontend/src/types.ts` | Modify | Add SegProgress, PatchStats, ContextMenuState, QuickInputState, TreeAction, TreeState, KeyboardHandlers |
+| `frontend/src/types.ts` | Modify | Add SegProgress, PatchStats, ContextMenuState, QuickInputState, DeleteConfirmState, TreeAction, TreeState, KeyboardHandlers (SelectedSegment already exists) |
 | `frontend/src/utils.ts` | Create | Pure helpers: tagColor, pluralSeg, drawOnCanvas, drawSelectionStripes |
 | `frontend/src/hooks/useApi.ts` | Create | Tauri IPC → API URL → typed Api instance |
 | `frontend/src/hooks/useCanvas.ts` | Create | Zoom/pan/offset with refs, non-passive wheel |
@@ -89,6 +89,16 @@ export interface TreeState {
   lastTreeClick: string | null;
 }
 
+export interface DeleteConfirmState {
+  tagName: string;
+  count: number;
+  level?: 'tag' | 'patch' | 'segment';
+  patchY?: number;
+  patchX?: number;
+  segmentId?: number;
+  resolved?: Set<string>;
+}
+
 // Keyboard handler interface
 export interface KeyboardHandlers {
   onUndo: () => void;
@@ -104,6 +114,25 @@ export interface KeyboardHandlers {
   onEnter: () => void;
   onZoom: (factor: number) => void;
 }
+```
+
+- [ ] **Step 1b: Update api.ts to support AbortController signal**
+
+In `frontend/src/api.ts`, update the `get` function to accept an optional `signal` parameter:
+
+```typescript
+  async function get<T>(endpoint: string, signal?: AbortSignal): Promise<T> {
+    const res = await fetch(`${baseUrl}${endpoint}`, signal ? { signal } : {});
+    if (!res.ok) throw new Error(`API ${res.status}: ${endpoint}`);
+    return res.json();
+  }
+```
+
+And update `getSegmentation` to pass signal through:
+
+```typescript
+    getSegmentation: (py: number, px: number, signal?: AbortSignal) =>
+      get<SegmentationData>(`/api/segmentation/${py}/${px}`, signal),
 ```
 
 - [ ] **Step 2: Create utils.ts**
@@ -409,7 +438,7 @@ export function useCanvas() {
 
   return {
     zoom, offset, zoomRef, offsetRef,
-    viewerCallbackRef, viewerRef,
+    viewerCallbackRef, viewerRef, isPanningRef,
     handleMouseDown, handleMouseMove, handleMouseUp,
     resetView, handleZoom,
   };
@@ -489,7 +518,7 @@ export function useSegmentation(
     abortRef.current = ac;
     setPatchReady(false);
 
-    api.getSegmentation(currentPatch.y, currentPatch.x)
+    api.getSegmentation(currentPatch.y, currentPatch.x, ac.signal)
       .then(d => {
         if (ac.signal.aborted) return;
         if (d.status === 'ready') {
@@ -506,8 +535,6 @@ export function useSegmentation(
         }
       })
       .catch(() => {});
-
-    api.getTags().catch(() => {});
   }, [api, currentPatch, imagesAligned]);
 
   // Poll segmentation progress (2s when processing, 5s when idle)
@@ -1384,7 +1411,7 @@ export default function App() {
 
   // Image click handler
   const handleImageClick = useCallback((e: React.MouseEvent) => {
-    if (!seg.patchReady || !api) return;
+    if (!seg.patchReady || !api || canvas.isPanningRef.current) return;
     const viewer = canvas.viewerRef.current;
     if (!viewer) return;
     const panelRect = viewer.getBoundingClientRect();

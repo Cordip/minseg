@@ -134,3 +134,75 @@ export interface SelectedSegment {
   patchY: number;
   patchX: number;
 }
+
+// Segmentation progress
+export interface SegProgress {
+  done: number;
+  total: number;
+  untagged: number;
+}
+
+export interface PatchStats {
+  total: number;
+  tagged: number;
+}
+
+// UI state
+export interface ContextMenuState {
+  x: number;
+  y: number;
+  tagName: string;
+  tagColor: string;
+  level: 'tag' | 'patch' | 'segment';
+  patchY?: number;
+  patchX?: number;
+  segmentId?: number;
+}
+
+export interface QuickInputState {
+  patchY: number;
+  patchX: number;
+  segmentId: number;
+}
+
+export interface DeleteConfirmState {
+  tagName: string;
+  count: number;
+  level?: 'tag' | 'patch' | 'segment';
+  patchY?: number;
+  patchX?: number;
+  segmentId?: number;
+  resolved?: Set<string>;
+}
+
+// Tree reducer
+export type TreeAction =
+  | { type: 'TOGGLE_NODE'; key: string }
+  | { type: 'SET_SELECTION'; selection: Set<string> }
+  | { type: 'SHIFT_SELECT'; nodeKey: string; allKeys: string[] }
+  | { type: 'CLICK'; nodeKey: string }
+  | { type: 'CLEAR_SELECTION' }
+  | { type: 'REFRESH_TREE'; data: TreeTag[] };
+
+export interface TreeState {
+  treeData: TreeTag[];
+  expandedNodes: Set<string>;
+  treeSelection: Set<string>;
+  lastTreeClick: string | null;
+}
+
+// Keyboard handler interface
+export interface KeyboardHandlers {
+  onUndo: () => void;
+  onRedo: () => void;
+  onNavigate: (dx: number, dy: number) => void;
+  onToggleBounds: () => void;
+  onToggleSegments: () => void;
+  onToggleXpl90: () => void;
+  onTogglePpl: () => void;
+  onToggleUntagged: () => void;
+  onToggleHelp: () => void;
+  onEscape: () => void;
+  onEnter: () => void;
+  onZoom: (factor: number) => void;
+}

@@ -6,8 +6,8 @@ import type {
 } from './types';
 
 export function createApi(baseUrl: string) {
-  async function get<T>(endpoint: string): Promise<T> {
-    const res = await fetch(`${baseUrl}${endpoint}`);
+  async function get<T>(endpoint: string, signal?: AbortSignal): Promise<T> {
+    const res = await fetch(`${baseUrl}${endpoint}`, signal ? { signal } : {});
     if (!res.ok) throw new Error(`API ${res.status}: ${endpoint}`);
     return res.json();
   }
@@ -32,8 +32,8 @@ export function createApi(baseUrl: string) {
     // Segmentation
     startSegmentation: () =>
       post<StatusResponse>('/api/start-segmentation'),
-    getSegmentation: (py: number, px: number) =>
-      get<SegmentationData>(`/api/segmentation/${py}/${px}`),
+    getSegmentation: (py: number, px: number, signal?: AbortSignal) =>
+      get<SegmentationData>(`/api/segmentation/${py}/${px}`, signal),
     requestPatchPriority: (py: number, px: number) =>
       post<StatusResponse>(`/api/segment-patch/${py}/${px}`),
     getProgress: () =>
