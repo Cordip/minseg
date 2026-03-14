@@ -1,4 +1,6 @@
-__pycache__*.jsc
+__pycache__
+*.jsc
+.coverage
 frontend/src/app-bundle.js
 frontend/src/app-bundle.obf.js
 node_modules
