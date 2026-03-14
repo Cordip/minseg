@@ -5,7 +5,19 @@ const fs = require('fs');
 
 let mainWindow;
 let pythonProcess;
-const API_URL = 'http://127.0.0.1:8001';
+let API_URL = 'http://127.0.0.1:8001';
+
+function findFreePort() {
+    return new Promise((resolve, reject) => {
+        const net = require('net');
+        const server = net.createServer();
+        server.listen(0, '127.0.0.1', () => {
+            const port = server.address().port;
+            server.close(() => resolve(port));
+        });
+        server.on('error', reject);
+    });
+}
 
 function getPythonCommand() {
     const backendDir = path.resolve(__dirname, '..', 'backend');
@@ -36,7 +48,9 @@ async function killPort(port) {
 }
 
 async function startBackend() {
-    await killPort(8001);
+    const port = await findFreePort();
+    API_URL = `http://127.0.0.1:${port}`;
+    console.log(`=== Using port ${port} ===`);
     
     const isWin = process.platform === 'win32';
     const binaryName = isWin ? 'backend.exe' : 'backend';
@@ -63,7 +77,8 @@ async function startBackend() {
         pythonProcess = spawn(execPath, spawnArgs, {
             cwd: cwd,
             shell: false,
-            stdio: 'pipe'
+            stdio: 'pipe',
+            env: { ...process.env, PORT: String(port) }
         });
     } else {
         console.log('=== Starting Python Backend (Dev Fallback) ===');
@@ -77,10 +92,11 @@ async function startBackend() {
             return false;
         }
         
-        pythonProcess = spawn(python, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8001'], {
+        pythonProcess = spawn(python, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(port)], {
             cwd: backendDir,
             shell: true,
-            stdio: 'pipe'
+            stdio: 'pipe',
+            env: { ...process.env, PORT: String(port) }
         });
     }
     
