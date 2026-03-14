@@ -1,7 +1,7 @@
 __pycache__
 *.jsc
 .coverage
-frontend/src/app-bundle.js
+frontend/src/app-bundle.min.js
 frontend/src/app-bundle.obf.js
 node_modules
 __pycache__

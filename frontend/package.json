@@ -4,7 +4,7 @@
   "description": "Desktop application for mineral grain segmentation and annotation",
   "main": "main.js",
   "scripts": {
-    "start": "node esbuild.config.mjs && electron .",
+    "start": "electron .",
     "bundle": "node esbuild.config.mjs",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
@@ -37,6 +37,7 @@
       "main-entry.js",
       "preload.js",
       "src/app-bundle.js",
+      "src/app-bundle.min.js",
       "src/styles/**/*",
       "public/**/*",
       "**/*.jsc"

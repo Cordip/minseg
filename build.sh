@@ -75,14 +75,16 @@ npx bytenode -e -c main.js
 sed -i 's/"main": "main.js"/"main": "main-entry.js"/' package.json
 cd ..
 
-# Step 4: Bundle and minify renderer (esbuild)
-echo "[4/5] Bundling renderer (esbuild)..."
+# Step 4: Minify renderer (esbuild)
+echo "[4/5] Minifying renderer (esbuild)..."
 cd frontend
 node esbuild.config.mjs
+sed -i 's/app-bundle\.js/app-bundle.min.js/g' public/app.html
 
 # Ensure dev files are restored even if build fails
 restore_dev_files() {
     cd /home/cordis/Gits/python/two/new2/frontend
+    sed -i 's/app-bundle\.min\.js/app-bundle.js/g' public/app.html
     sed -i 's/"main": "main-entry.js"/"main": "main.js"/' package.json
 }
 trap restore_dev_files EXIT

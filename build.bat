@@ -67,11 +67,12 @@ if errorlevel 1 ( echo ERROR: bytenode compile main.js failed && cd .. && pause 
 powershell -Command "(Get-Content package.json) -replace '\"main\": \"main.js\"', '\"main\": \"main-entry.js\"' | Set-Content package.json"
 cd ..
 
-:: Step 4: Bundle and minify renderer (esbuild)
-echo [4/5] Bundling renderer (esbuild)...
+:: Step 4: Minify renderer (esbuild)
+echo [4/5] Minifying renderer (esbuild)...
 cd frontend
 node esbuild.config.mjs
 if errorlevel 1 ( echo ERROR: esbuild failed && cd .. && pause && exit /b 1 )
+powershell -Command "(Get-Content public\app.html) -replace 'app-bundle\.js', 'app-bundle.min.js' | Set-Content public\app.html"
 
 :: Step 5: Package with Electron Builder
 echo [5/5] Building Electron app...
@@ -97,5 +98,6 @@ pause
 exit /b 0
 
 :RESTORE_DEV
+powershell -Command "(Get-Content public\app.html) -replace 'app-bundle\.min\.js', 'app-bundle.js' | Set-Content public\app.html"
 powershell -Command "(Get-Content package.json) -replace '\"main\": \"main-entry.js\"', '\"main\": \"main.js\"' | Set-Content package.json"
 exit /b 0
