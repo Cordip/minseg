@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' http://127.0.0.1:8001 http://127.0.0.1:8000; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' http://127.0.0.1:*; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
     <title>Mineral Segmentation</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -289,6 +289,9 @@
 
     <script>
         var API = 'http://127.0.0.1:8001';
+        var apiReady = (window.electronAPI)
+            ? window.electronAPI.getApiUrl().then(function(url) { API = url; })
+            : Promise.resolve();
         var imageTypes = ['ppl45', 'ppl90', 'xpl45', 'xpl90'];
         var selectedFiles = { ppl45: null, ppl90: null, xpl45: null, xpl90: null };
         
@@ -387,6 +390,7 @@
         }
         
         async function startProcessing() {
+            await apiReady;
             var startBtn = document.getElementById('startBtn');
             if (startBtn) startBtn.disabled = true;
             
