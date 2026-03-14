@@ -70,6 +70,7 @@ cd ..
 :: Step 4: Obfuscate renderer with javascript-obfuscator
 echo [4/5] Obfuscating renderer (javascript-obfuscator)...
 cd frontend
+copy src\app.js src\app-bundle.js
 npx javascript-obfuscator src\app-bundle.js ^
     --output src\app-bundle.obf.js ^
     --compact true ^
@@ -78,7 +79,7 @@ npx javascript-obfuscator src\app-bundle.js ^
 if errorlevel 1 ( echo ERROR: javascript-obfuscator failed && cd .. && pause && exit /b 1 )
 
 :: Update app.html to use obfuscated bundle
-powershell -Command "(Get-Content public\app.html) -replace 'app-bundle\.js', 'app-bundle.obf.js' | Set-Content public\app.html"
+powershell -Command "(Get-Content public\app.html) -replace 'app\.js', 'app-bundle.obf.js' | Set-Content public\app.html"
 
 :: Step 5: Package with Electron Builder
 echo [5/5] Building Electron app...
@@ -104,6 +105,6 @@ pause
 exit /b 0
 
 :RESTORE_DEV
-powershell -Command "(Get-Content public\app.html) -replace 'app-bundle\.obf\.js', 'app-bundle.js' | Set-Content public\app.html"
+powershell -Command "(Get-Content public\app.html) -replace 'app-bundle\.obf\.js', 'app.js' | Set-Content public\app.html"
 powershell -Command "(Get-Content package.json) -replace '\"main\": \"main-entry.js\"', '\"main\": \"main.js\"' | Set-Content package.json"
 exit /b 0

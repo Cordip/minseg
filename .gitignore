@@ -1,4 +1,5 @@
 __pycache__*.jsc
+frontend/src/app-bundle.js
 frontend/src/app-bundle.obf.js
 node_modules
 __pycache__

@@ -53,7 +53,7 @@ class AppState:
         self.seg_active: set = set()       # {(py, px), ...} patches currently in ProcessPoolExecutor
 
 state = AppState()
-if getattr(sys, 'frozen', False):
+if getattr(sys, 'frozen', False) or "__compiled__" in globals():
     state.output_dir = Path.home() / "MineralSegmentation" / "output"
 state.output_dir.mkdir(parents=True, exist_ok=True)
 
